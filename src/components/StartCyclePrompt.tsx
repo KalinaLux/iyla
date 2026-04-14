@@ -20,6 +20,7 @@ import {
   getSelectedTheme,
   setSelectedTheme,
 } from '../lib/signal-themes';
+import { seedKalinaProfile, seedDominickProfile } from '../lib/seed-data';
 
 type Role = null | 'her' | 'partner';
 type HerStep = 'welcome' | 'cycle' | 'theme' | 'code' | 'done';
@@ -151,6 +152,7 @@ export default function StartCyclePrompt() {
   const [generatedCode] = useState(() => generateCode());
   const [copied, setCopied] = useState(false);
   const [invited, setInvited] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [enteredCode, setEnteredCode] = useState(() => {
     if (inviteCode && inviteCode.length === 6) {
       return inviteCode.toUpperCase().split('').slice(0, 6);
@@ -288,7 +290,38 @@ export default function StartCyclePrompt() {
           </button>
         </div>
 
-        <div className="mt-10 flex items-center gap-2">
+        {/* Quick-load profiles */}
+        <div className="w-full max-w-sm mt-8 pt-6 border-t border-warm-100">
+          <p className="text-[11px] text-warm-300 uppercase tracking-wider font-semibold mb-3 text-center">Quick Load — Returning User</p>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                setLoading(true);
+                await seedKalinaProfile();
+                window.location.href = '/';
+              }}
+              disabled={loading}
+              className="flex-1 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 text-rose-700 rounded-xl py-3 text-xs font-semibold hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : "Kalina's Profile"}
+            </button>
+            <button
+              onClick={async () => {
+                setLoading(true);
+                await seedKalinaProfile();
+                await seedDominickProfile();
+                window.location.href = '/partner';
+              }}
+              disabled={loading}
+              className="flex-1 bg-gradient-to-r from-blue-50 to-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl py-3 text-xs font-semibold hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : "Dominick's Profile"}
+            </button>
+          </div>
+          <p className="text-[10px] text-warm-300 mt-2 text-center">Loads all cycle data, labs, and supplements</p>
+        </div>
+
+        <div className="mt-6 flex items-center gap-2">
           <Shield size={12} className="text-warm-300" />
           <p className="text-[11px] text-warm-300">Your data never leaves your device. Zero tracking. Zero accounts.</p>
         </div>
