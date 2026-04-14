@@ -16,6 +16,7 @@ import {
   FlaskConical,
   Wind,
   Send,
+  MessageCircle,
 } from 'lucide-react';
 import { SIGNAL_THEMES, getSelectedTheme, setSelectedTheme } from '../lib/signal-themes';
 
@@ -664,6 +665,22 @@ export default function PartnerPairing() {
                     ))}
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    const inviteUrl = `${window.location.origin}/?invite=${generatedCode}`;
+                    const message = `Hey! I'm using iyla to track our fertility journey. Tap this link to connect with me:\n\n${inviteUrl}`;
+                    if (navigator.share) {
+                      navigator.share({ title: 'iyla — Connect with your partner', text: message, url: inviteUrl }).catch(() => {});
+                    } else {
+                      window.open(`sms:?&body=${encodeURIComponent(message)}`, '_self');
+                    }
+                  }}
+                  className="w-full py-3.5 bg-gradient-to-r from-violet-500 to-indigo-500 text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200/50 transition-all flex items-center justify-center gap-2 mb-4 active:scale-[0.98]"
+                >
+                  <MessageCircle size={16} strokeWidth={1.5} />
+                  Text Invite to Partner
+                </button>
+
                 <div className="flex items-center justify-center gap-4 mb-4">
                   <button
                     onClick={handleCopy}
@@ -689,7 +706,7 @@ export default function PartnerPairing() {
                   </span>
                 </div>
                 <p className="text-xs text-warm-400">
-                  Share this code with your partner. They'll enter it on their device.
+                  Or share the code manually — he'll enter it on his device.
                 </p>
               </>
             )}

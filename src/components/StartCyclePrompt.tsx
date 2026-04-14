@@ -11,6 +11,7 @@ import {
   Smartphone,
   Send,
   Shield,
+  MessageCircle,
 } from 'lucide-react';
 import { db } from '../lib/db';
 import { format } from 'date-fns';
@@ -131,17 +132,58 @@ function ThemeMiniPicker({
   );
 }
 
+function getInviteFromUrl(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('invite');
+  } catch {
+    return null;
+  }
+}
+
 export default function StartCyclePrompt() {
-  const [role, setRole] = useState<Role>(null);
+  const inviteCode = getInviteFromUrl();
+  const [role, setRole] = useState<Role>(() => (inviteCode ? 'partner' : null));
   const [herStep, setHerStep] = useState<HerStep>('welcome');
-  const [hisStep, setHisStep] = useState<HisStep>('welcome');
+  const [hisStep, setHisStep] = useState<HisStep>(() => (inviteCode ? 'code' : 'welcome'));
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [themeId, setThemeId] = useState(() => getSelectedTheme());
   const [generatedCode] = useState(() => generateCode());
   const [copied, setCopied] = useState(false);
-  const [enteredCode, setEnteredCode] = useState(['', '', '', '', '', '']);
-  const [codeValid, setCodeValid] = useState(false);
+  const [invited, setInvited] = useState(false);
+  const [enteredCode, setEnteredCode] = useState(() => {
+    if (inviteCode && inviteCode.length === 6) {
+      return inviteCode.toUpperCase().split('').slice(0, 6);
+    }
+    return ['', '', '', '', '', ''];
+  });
+  const [codeValid, setCodeValid] = useState(() => !!inviteCode && inviteCode.length === 6);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const inviteUrl = `${window.location.origin}/?invite=${generatedCode}`;
+
+  const handleShareInvite = async () => {
+    const message = `Hey! I'm using iyla to track our fertility journey. Tap this link to connect with me:\n\n${inviteUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'iyla — Connect with your partner',
+          text: message,
+          url: inviteUrl,
+        });
+        setInvited(true);
+        return;
+      } catch {
+        // user cancelled or share failed, fall through to SMS
+      }
+    }
+
+    // Fallback: open SMS with pre-filled message
+    const smsBody = encodeURIComponent(message);
+    window.open(`sms:?&body=${smsBody}`, '_self');
+    setInvited(true);
+  };
 
   const handleCopy = async () => {
     try {
@@ -195,6 +237,7 @@ export default function StartCyclePrompt() {
     localStorage.setItem(ROLE_STORAGE_KEY, 'partner');
     localStorage.setItem(ONBOARDED_KEY, 'true');
     setHisStep('done');
+    // Strip invite param from URL before navigating
     window.location.href = '/partner';
   }
 
@@ -361,38 +404,57 @@ export default function StartCyclePrompt() {
             </div>
             <h2 className="text-xl font-bold text-warm-800 mb-2">Invite your partner</h2>
             <p className="text-sm text-warm-400 mb-6 leading-relaxed">
-              Share this code with him. He'll enter it when he opens iyla on his phone.
+              Send him a link — he'll tap it and land right in his setup. No code to type.
             </p>
 
-            <div className="bg-gradient-to-br from-violet-500 to-indigo-500 rounded-2xl p-6 mb-4">
-              <div className="flex items-center justify-center gap-2.5">
+            {/* Primary: Send Invite */}
+            <button
+              onClick={handleShareInvite}
+              className={`w-full py-4 rounded-2xl text-sm font-semibold transition-all flex items-center justify-center gap-2.5 mb-4 ${
+                invited
+                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                  : 'bg-gradient-to-r from-violet-500 to-indigo-500 text-white hover:shadow-lg hover:shadow-indigo-200/50 active:scale-[0.98]'
+              }`}
+            >
+              {invited ? (
+                <>
+                  <Check size={18} strokeWidth={2} />
+                  Invite Sent!
+                </>
+              ) : (
+                <>
+                  <MessageCircle size={18} strokeWidth={1.5} />
+                  Text Invite to Partner
+                </>
+              )}
+            </button>
+
+            {/* Code display (secondary) */}
+            <div className="bg-warm-50 rounded-2xl p-4 mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-warm-300 text-center mb-3">
+                Or share this code manually
+              </p>
+              <div className="flex items-center justify-center gap-2">
                 {generatedCode.split('').map((char, i) => (
                   <span
                     key={i}
-                    className="w-11 h-13 flex items-center justify-center bg-white/20 backdrop-blur-sm rounded-xl text-2xl font-mono font-bold text-white"
+                    className="w-9 h-11 flex items-center justify-center bg-white border border-warm-200 rounded-lg text-lg font-mono font-bold text-warm-700"
                   >
                     {char}
                   </span>
                 ))}
+                <button
+                  onClick={handleCopy}
+                  className="ml-2 p-2 bg-white border border-warm-200 rounded-lg hover:bg-warm-100 transition-colors"
+                >
+                  {copied ? (
+                    <Check size={14} className="text-emerald-500" strokeWidth={2} />
+                  ) : (
+                    <Copy size={14} className="text-warm-400" strokeWidth={1.5} />
+                  )}
+                </button>
               </div>
             </div>
-
-            <button
-              onClick={handleCopy}
-              className="flex items-center justify-center gap-2 mx-auto px-5 py-2.5 bg-warm-50 rounded-xl text-sm text-warm-600 hover:bg-warm-100 transition-colors mb-6"
-            >
-              {copied ? (
-                <>
-                  <Check size={14} className="text-emerald-500" strokeWidth={2} />
-                  <span className="text-emerald-600">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={14} strokeWidth={1.5} />
-                  Copy Code
-                </>
-              )}
-            </button>
 
             <div className="flex gap-3">
               <button
@@ -457,56 +519,96 @@ export default function StartCyclePrompt() {
           </div>
         )}
 
+        {/* Auto-filled from invite link — skip to code step with confirmation */}
+
         {hisStep === 'code' && (
           <div className="w-full max-w-sm animate-in fade-in">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center mx-auto mb-5 shadow-sm">
               <Smartphone size={20} className="text-white" strokeWidth={1.5} />
             </div>
-            <h2 className="text-xl font-bold text-warm-800 mb-2">Enter your pairing code</h2>
-            <p className="text-sm text-warm-400 mb-6">Ask your partner for the 6-character code from her phone.</p>
 
-            <div
-              className="flex items-center justify-center gap-2 mb-6"
-              onPaste={handleCodePaste}
-            >
-              {enteredCode.map((char, i) => (
-                <input
-                  key={i}
-                  ref={(el) => { inputRefs.current[i] = el; }}
-                  type="text"
-                  maxLength={1}
-                  value={char}
-                  onChange={(e) => handleCodeInput(i, e.target.value)}
-                  onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                  className="w-12 h-14 text-center text-xl font-mono font-bold text-warm-800 bg-warm-50 border-2 border-warm-200 rounded-xl focus:border-indigo-500 focus:bg-white focus:outline-none transition-all"
-                />
-              ))}
-            </div>
+            {inviteCode ? (
+              <>
+                <h2 className="text-xl font-bold text-warm-800 mb-2">You're connected!</h2>
+                <p className="text-sm text-warm-400 mb-6 leading-relaxed">
+                  Your partner sent you an invite. You're all linked up — just pick a notification style and you're in.
+                </p>
 
-            {codeValid && (
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <Check size={12} className="text-emerald-600" strokeWidth={2.5} />
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 mb-6">
+                  <div className="flex items-center justify-center gap-2.5 mb-3">
+                    {inviteCode.toUpperCase().split('').slice(0, 6).map((char, i) => (
+                      <span
+                        key={i}
+                        className="w-10 h-12 flex items-center justify-center bg-white border border-emerald-200 rounded-lg text-lg font-mono font-bold text-emerald-700"
+                      >
+                        {char}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-emerald-200 flex items-center justify-center">
+                      <Check size={12} className="text-emerald-700" strokeWidth={2.5} />
+                    </div>
+                    <span className="text-sm font-medium text-emerald-700">Paired via invite link</span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium text-emerald-600">Code accepted</span>
-              </div>
-            )}
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setHisStep('welcome')}
-                className="px-5 py-3 bg-warm-50 text-warm-500 rounded-2xl text-sm font-medium hover:bg-warm-100 transition-colors"
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <button
-                onClick={() => setHisStep('theme')}
-                disabled={!codeValid}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3.5 rounded-2xl text-sm font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Next <ArrowRight size={16} />
-              </button>
-            </div>
+                <button
+                  onClick={() => setHisStep('theme')}
+                  className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3.5 rounded-2xl text-sm font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  Choose Notification Style <ArrowRight size={16} />
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold text-warm-800 mb-2">Enter your pairing code</h2>
+                <p className="text-sm text-warm-400 mb-6">Ask your partner for the 6-character code from her phone.</p>
+
+                <div
+                  className="flex items-center justify-center gap-2 mb-6"
+                  onPaste={handleCodePaste}
+                >
+                  {enteredCode.map((char, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => { inputRefs.current[i] = el; }}
+                      type="text"
+                      maxLength={1}
+                      value={char}
+                      onChange={(e) => handleCodeInput(i, e.target.value)}
+                      onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                      className="w-12 h-14 text-center text-xl font-mono font-bold text-warm-800 bg-warm-50 border-2 border-warm-200 rounded-xl focus:border-indigo-500 focus:bg-white focus:outline-none transition-all"
+                    />
+                  ))}
+                </div>
+
+                {codeValid && (
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
+                      <Check size={12} className="text-emerald-600" strokeWidth={2.5} />
+                    </div>
+                    <span className="text-sm font-medium text-emerald-600">Code accepted</span>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setHisStep('welcome')}
+                    className="px-5 py-3 bg-warm-50 text-warm-500 rounded-2xl text-sm font-medium hover:bg-warm-100 transition-colors"
+                  >
+                    <ArrowLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => setHisStep('theme')}
+                    disabled={!codeValid}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3.5 rounded-2xl text-sm font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next <ArrowRight size={16} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
