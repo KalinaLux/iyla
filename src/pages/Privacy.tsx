@@ -200,9 +200,9 @@ export default function Privacy() {
           Your Data Belongs to You. Period.
         </h1>
         <p className="text-white/80 max-w-2xl leading-relaxed">
-          iyla is built on zero-knowledge architecture. Your fertility data
-          never leaves your device. We can't see it, sell it, or share it —
-          because we never have it.
+          iyla is built on a local-first, zero-cloud architecture. Your
+          fertility data lives only on your device. We can't see it, sell
+          it, or share it — because we never have it.
         </p>
         <p className="mt-6 text-xs text-white/40 font-medium tracking-wide">
           Solairen Health

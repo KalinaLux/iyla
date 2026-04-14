@@ -488,8 +488,8 @@ export default function PartnerPairing() {
           </div>
           <div className="space-y-3">
             {[
-              'Pairing uses end-to-end encryption',
               'Your raw data never leaves your device',
+              'No cloud servers — everything stays local',
               'Only approved summaries are shared',
               'You can disconnect at any time — their access is immediately revoked',
             ].map((text) => (
@@ -785,8 +785,8 @@ export default function PartnerPairing() {
         </div>
         <div className="space-y-3">
           {[
-            'Pairing uses end-to-end encryption',
             'Your raw data never leaves your device',
+            'No cloud servers — everything stays local',
             'Only approved summaries are shared',
             'You can disconnect at any time — their access is immediately revoked',
           ].map((text) => (

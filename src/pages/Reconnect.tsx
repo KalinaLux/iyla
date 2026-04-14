@@ -124,8 +124,8 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
           </button>
         </div>
         <p className="text-xs text-warm-300 mt-4 max-w-sm">
-          Everything here is stored locally, encrypted, and never shared with
-          providers unless you choose.
+          Everything here is stored locally on your device and never shared
+          with providers unless you choose.
         </p>
       </div>
     );

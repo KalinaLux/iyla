@@ -115,7 +115,7 @@ export default function Layout() {
         <div className="p-4 border-t border-warm-100">
           <div className="px-4 py-3 bg-warm-50 rounded-2xl">
             <p className="text-xs font-medium text-warm-600">Your data stays here</p>
-            <p className="text-[11px] text-warm-400 mt-0.5">Encrypted. Local. Private.</p>
+            <p className="text-[11px] text-warm-400 mt-0.5">Local-only. No cloud. Private.</p>
           </div>
         </div>
       </aside>

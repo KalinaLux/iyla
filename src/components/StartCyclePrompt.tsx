@@ -354,7 +354,7 @@ export default function StartCyclePrompt() {
               iyla brings together all your fertility signals — Kegg, Inito, TempDrop, BBT, labs, supplements — into one clear picture.
             </p>
             <p className="text-xs text-warm-400 leading-relaxed mb-8">
-              Everything stays on your device. Private. Encrypted. Yours.
+              Everything stays on your device. No cloud. No accounts. Yours.
             </p>
             <button
               onClick={() => setHerStep('cycle')}
