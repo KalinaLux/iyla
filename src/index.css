@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm neutrals — the foundation */
+  --color-warm-900: #1a1a1a;
+  --color-warm-800: #2d2d2d;
+  --color-warm-700: #454545;
+  --color-warm-600: #5c5c5c;
+  --color-warm-500: #7a7a7a;
+  --color-warm-400: #a0a0a0;
+  --color-warm-300: #c2c2c2;
+  --color-warm-200: #e0e0e0;
+  --color-warm-150: #ebebeb;
+  --color-warm-100: #f2f2f2;
+  --color-warm-50: #f8f8f8;
+
+  /* Rose — for menstrual, symptoms */
+  --color-rose-500: #c9878f;
+  --color-rose-400: #d9a3aa;
+  --color-rose-300: #e6bfc4;
+  --color-rose-200: #f0d8db;
+  --color-rose-100: #f8ecee;
+  --color-rose-50: #fcf5f6;
+
+  /* Honey — fertile warmth */
+  --color-honey-700: #8a6420;
+  --color-honey-600: #a8792a;
+  --color-honey-500: #c99a3d;
+  --color-honey-400: #d4af61;
+  --color-honey-300: #e2c88a;
+  --color-honey-200: #efddb5;
+  --color-honey-100: #f7eedb;
+  --color-honey-50: #fbf6ed;
+
+  /* Lavender — luteal calm */
+  --color-lavender-600: #7260a4;
+  --color-lavender-500: #9b8ec4;
+  --color-lavender-400: #b3a8d4;
+  --color-lavender-300: #ccc4e3;
+  --color-lavender-200: #e0dcef;
+  --color-lavender-100: #efedf7;
+  --color-lavender-50: #f7f6fb;
+
+  /* Soft coral */
+  --color-coral-500: #d47872;
+  --color-coral-400: #e09d98;
+  --color-coral-100: #faeeed;
+  --color-coral-50: #fdf6f5;
+
+  /* Soft green */
+  --color-green-600: #5a8f5e;
+  --color-green-500: #22c55e;
+  --color-green-400: #93bf96;
+  --color-green-200: #d4e8d5;
+  --color-green-100: #eaf4eb;
+  --color-green-50: #f4faf5;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background-color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+*:focus-visible {
+  outline: 2px solid #c2c2c2;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e0e0e0;
+  border-radius: 99px;
+}
+
+.status-card-glow {
+  position: relative;
+  overflow: hidden;
+}
+.status-card-glow::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 60%;
+  height: 140%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}

@@ -1,0 +1,138 @@
+export interface TWWDay {
+  dpo: number;
+  biology: string;
+  symptomContext: string;
+  mindfulness: string;
+  dontDoThis: string;
+  partnerCard: string;
+  affirmation: string;
+}
+
+export const TWW_DAYS: TWWDay[] = [
+  {
+    dpo: 1,
+    biology: 'If fertilization occurred, the egg and sperm have just united in the fallopian tube, forming a single-celled zygote. Cell division begins almost immediately.',
+    symptomContext: 'Anything you feel today is from ovulation hormones, not pregnancy. It is physically impossible to have pregnancy symptoms at 1 DPO.',
+    mindfulness: 'Close your eyes. Three deep breaths in through the nose, out through the mouth. You\'ve done everything you can. The rest is biology.',
+    dontDoThis: 'Don\'t Google "1 DPO symptoms." There are no pregnancy symptoms at 1 DPO. Protect your peace.',
+    partnerCard: 'She just ovulated. The timing was right. Now begins the two-week wait — the hardest part of the cycle. Just be present.',
+    affirmation: 'Your body knows what to do. You\'ve given it every advantage.',
+  },
+  {
+    dpo: 2,
+    biology: 'The fertilized egg is now a 2-cell embryo, continuing to divide as it slowly travels through the fallopian tube toward the uterus. Your progesterone is beginning to rise.',
+    symptomContext: 'Fatigue, breast tenderness, or mild cramping are all normal progesterone effects — they happen whether or not you\'re pregnant. They are not signs either way.',
+    mindfulness: 'Today\'s practice: body scan meditation. Start at the top of your head, slowly move awareness down to your toes. 5 minutes. Release tension in your jaw and shoulders.',
+    dontDoThis: 'Don\'t take a pregnancy test. hCG doesn\'t exist yet in your body. It cannot show anything.',
+    partnerCard: 'Day 2 of the wait. She might seem distracted — that\'s normal. A walk together would be perfect right now.',
+    affirmation: 'Patience is an act of strength, not passivity. Your body is working.',
+  },
+  {
+    dpo: 3,
+    biology: 'The embryo is now 6-8 cells. It\'s still traveling through the fallopian tube. The zona pellucida (protective shell) is still intact. Your uterine lining is thickening under progesterone\'s influence.',
+    symptomContext: 'Progesterone is rising rapidly. You may feel warmer than usual, bloated, or emotionally sensitive. All of this is the luteal phase doing its job.',
+    mindfulness: 'Box breathing: inhale 4 counts, hold 4, exhale 4, hold 4. Repeat 6 times. This directly activates your parasympathetic nervous system.',
+    dontDoThis: 'Don\'t change your supplement protocol mid-TWW unless your provider says to. Consistency matters.',
+    partnerCard: 'She\'s 3 days into the wait. Progesterone is making her feel things intensely. Extra patience today.',
+    affirmation: 'Millions of cells are dividing in perfect orchestration. Trust the process.',
+  },
+  {
+    dpo: 4,
+    biology: 'The embryo is now a morula — a tight ball of 16+ cells. It\'s entering the uterine cavity from the fallopian tube. The cells are beginning to differentiate.',
+    symptomContext: 'Some women report a metallic taste or increased sense of smell around now. This is often progesterone, not a reliable pregnancy sign.',
+    mindfulness: 'Gratitude practice: name 3 things your body has done well this cycle. Maybe your temps were strong. Maybe your sleep improved. Acknowledge the effort.',
+    dontDoThis: 'Don\'t compare your cycle to anyone else\'s timeline on Reddit or forums. Every body is different.',
+    partnerCard: 'Day 4. If she\'s quiet, let her be. If she wants to talk about it, listen without trying to fix anything.',
+    affirmation: 'You are not behind. You are exactly where you need to be.',
+  },
+  {
+    dpo: 5,
+    biology: 'The morula is developing an inner cavity and becoming a blastocyst. The inner cell mass (which becomes the baby) and trophoblast (which becomes the placenta) are forming.',
+    symptomContext: 'You might feel twinges or pulling sensations. This could be your uterus preparing, gas, or nothing at all. It\'s too early for implantation in most cases.',
+    mindfulness: 'Walk outside for 10 minutes without your phone. Feel the ground under your feet. Nature reduces cortisol more effectively than any supplement.',
+    dontDoThis: 'Don\'t start symptom-spotting threads online. The anxiety spiral is real and it doesn\'t help.',
+    partnerCard: 'She\'s halfway to test day. You might ask: "Want to do something fun tonight that has nothing to do with fertility?" She needs normalcy.',
+    affirmation: 'The strongest thing you can do right now is rest.',
+  },
+  {
+    dpo: 6,
+    biology: 'The blastocyst has hatched from its protective shell (zona pellucida). This is the necessary step before implantation can begin. The blastocyst is searching for the right spot on the uterine wall.',
+    symptomContext: 'Cramping at 6 DPO could be implantation OR progesterone. Both are normal. You genuinely cannot distinguish between them. Don\'t try.',
+    mindfulness: 'Legs up the wall for 5 minutes. This gentle inversion calms the nervous system and improves pelvic blood flow. Close your eyes and breathe.',
+    dontDoThis: 'Testing at 6 DPO is throwing money away. Even if implantation happened today, hCG won\'t be detectable for 2-3 more days.',
+    partnerCard: 'She\'s 6 DPO. If she mentions cramping, don\'t say "that could be a good sign!" — it adds pressure. Just say "your body is doing its thing."',
+    affirmation: 'Your lining is strong. Your body built this nest with care.',
+  },
+  {
+    dpo: 7,
+    biology: 'Implantation may be beginning. The blastocyst is burrowing into the uterine lining. This process takes 1-3 days. Tiny blood vessels are forming to connect the embryo to your blood supply.',
+    symptomContext: 'Light spotting (implantation bleeding) is possible but only happens in about 25% of pregnancies. Most women don\'t have it. Absence means nothing.',
+    mindfulness: 'Evening ritual: warm herbal tea, no screens for 30 minutes before bed. Your progesterone needs good sleep to stay strong.',
+    dontDoThis: 'Don\'t obsessively check your underwear for implantation bleeding. It\'s uncommon, and checking constantly raises cortisol.',
+    partnerCard: 'Day 7. She might be more anxious now — the "maybe" feeling intensifies. A spontaneous hug with no words is better than any question.',
+    affirmation: 'Something remarkable may be happening inside you right now. Let it unfold.',
+  },
+  {
+    dpo: 8,
+    biology: 'If implantation is occurring, the trophoblast cells are invading the uterine lining and beginning to produce hCG — the pregnancy hormone. Levels are still microscopic.',
+    symptomContext: 'You might feel absolutely nothing different. That is completely normal and does not mean anything negative. Many successful pregnancies have zero symptoms at 8 DPO.',
+    mindfulness: '4-7-8 breathing: inhale 4 counts, hold 7, exhale slowly for 8. This is the most powerful breathing pattern for reducing acute anxiety.',
+    dontDoThis: 'Don\'t take a test yet. At 8 DPO, even if implantation occurred, hCG levels are typically 1-5 mIU/mL — below the detection threshold of any home test.',
+    partnerCard: 'She\'s 8 DPO. She might be anxious. A spontaneous compliment with no agenda would help more than asking "any symptoms?"',
+    affirmation: 'Absence of symptoms is not absence of hope.',
+  },
+  {
+    dpo: 9,
+    biology: 'hCG is doubling every 48-72 hours if implantation was successful. The embryo is establishing its blood supply. Your progesterone should be at its peak.',
+    symptomContext: 'Fatigue, sore breasts, and mild nausea can appear now — but these are also classic progesterone symptoms. They mean your luteal phase is strong, which is good regardless.',
+    mindfulness: 'Journaling prompt: Write down what you\'re grateful for about this cycle, independent of the outcome. What did you learn? What did you do well?',
+    dontDoThis: 'If you test and see a negative, it\'s likely too early. A 9 DPO negative means nothing conclusive. Protect your heart — wait.',
+    partnerCard: 'Day 9. She might start talking about testing. Support whatever she decides, but gently remind her that waiting gives more accurate results.',
+    affirmation: 'Your progesterone is strong. Your body is supporting this moment.',
+  },
+  {
+    dpo: 10,
+    biology: 'If pregnant, hCG may now be reaching 5-25 mIU/mL — approaching the detection threshold of sensitive pregnancy tests (like FRER). Implantation is completing.',
+    symptomContext: 'This is the earliest a very faint positive could theoretically appear on a sensitive test. But a negative today is not definitive — 30% of pregnancies don\'t show until 11-12 DPO.',
+    mindfulness: 'Place both hands on your lower belly. Breathe warmth into that space. Whatever is happening in there, your body deserves tenderness.',
+    dontDoThis: 'If you test and see a faint line, don\'t panic about how faint it is. Early lines are always faint. Test again in 48 hours.',
+    partnerCard: 'Day 10. Testing territory. She may test today. If it\'s negative, don\'t say "it\'s still early" — she knows. Just hold her.',
+    affirmation: 'Whatever today\'s answer is, your worth is not defined by a test line.',
+  },
+  {
+    dpo: 11,
+    biology: 'hCG continues to rise rapidly — doubling every 48 hours. The gestational sac is forming. The placenta is beginning to take shape.',
+    symptomContext: 'Heightened sense of smell, food aversions, or increased urination can begin appearing. But they\'re still not reliable indicators this early.',
+    mindfulness: 'Gentle yoga or stretching for 10 minutes. Focus on hip openers and heart openers. Move slowly. This is not a workout — it\'s a gift to your nervous system.',
+    dontDoThis: 'Don\'t Google image searches of "11 DPO BFP" for line comparison. Every test, every person, every cycle is different.',
+    partnerCard: 'Day 11. Almost there. She\'s carrying the weight of hope and fear simultaneously. Just be steady.',
+    affirmation: 'You have done everything in your power. That is enough.',
+  },
+  {
+    dpo: 12,
+    biology: 'This is considered the earliest reliable testing day. If pregnant, hCG should be 25-50 mIU/mL — well within FRER detection range.',
+    symptomContext: 'A positive today is reliable. A negative today is mostly reliable but late implantation (up to 12 DPO) means a small percentage of pregnancies won\'t show until 13-14 DPO.',
+    mindfulness: 'Before you test: 3 minutes of breathing. Whatever the result, you will be okay. You have survived every hard day so far. You will survive this one too.',
+    dontDoThis: 'Don\'t use blue dye tests (like Clearblue non-digital). They\'re notorious for evaporation lines. Use pink dye (FRER) or digital.',
+    partnerCard: 'This is likely test day. Be there if she wants you there. If the result isn\'t what you hoped, don\'t problem-solve — just be present in the sadness with her.',
+    affirmation: 'You are brave for hoping. That takes more courage than people understand.',
+  },
+  {
+    dpo: 13,
+    biology: 'If pregnant, hCG is now 50-100+ mIU/mL. A test should show a clear positive. If still negative, the luteal phase is ending and progesterone will begin to drop.',
+    symptomContext: 'If your temperature is still elevated and no period, that\'s a positive sign even without a test. If temperature drops, your period is likely coming within 24-48 hours.',
+    mindfulness: 'Whatever today holds, place your hand on your heart. Say: "I am doing the hardest thing. I am still here. I will keep going if I choose to."',
+    dontDoThis: 'If it\'s negative, don\'t spiral into "what I did wrong" thinking. Most cycle outcomes are determined by egg and embryo quality — factors largely outside your control.',
+    partnerCard: 'Day 13. If it\'s good news, celebrate gently — it\'s early. If it\'s not, just be there. She doesn\'t need solutions. She needs you.',
+    affirmation: 'Every cycle teaches your body something. Nothing is wasted.',
+  },
+  {
+    dpo: 14,
+    biology: 'Expected period day for a 28-day cycle. If no period and positive test, early pregnancy is confirmed. If period arrives, the cycle is complete and your body will begin again.',
+    symptomContext: 'A period starting today is definitive — this cycle did not result in pregnancy. Allow yourself to feel that. It\'s a loss, even if the world doesn\'t see it that way.',
+    mindfulness: 'Wherever you are today — celebrating or grieving — be gentle with yourself. Run a bath. Light a candle. Let this day be soft.',
+    dontDoThis: 'Don\'t make any big decisions about your fertility journey today. The day your period starts (or the day you see a positive) is not the day to decide what\'s next. Rest first.',
+    partnerCard: 'Day 14. If her period came, this is a grief day whether she shows it or not. Don\'t say "we\'ll try again next month" yet. Just say "I\'m sorry. I\'m here."',
+    affirmation: 'Your body is not failing you. It is trying, cycle after cycle, with extraordinary persistence. Honor that.',
+  },
+];
