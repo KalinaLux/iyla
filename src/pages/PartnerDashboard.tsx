@@ -15,6 +15,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { getSelectedTheme, getThemeById, setSelectedTheme, mapStatusToTier, SIGNAL_THEMES } from '../lib/signal-themes';
+import { pullStatus, subscribeToStatus, isSyncEnabled, type PartnerStatus } from '../lib/sync';
 
 type CycleStatus = 'low' | 'rising' | 'high' | 'peak' | 'confirmed_ovulation' | 'luteal' | 'menstrual';
 type CyclePhase = 'follicular' | 'ovulatory' | 'luteal' | 'menstrual';
@@ -137,6 +138,10 @@ function scoreLabel(score: number): string {
 
 export default function PartnerDashboard() {
   const [cycleStatus, setCycleStatus] = useState<CycleStatus>('high');
+  const [cycleDay, setCycleDay] = useState<number | null>(null);
+  const [, setLiveRecommendation] = useState<string | null>(null);
+  const [syncActive, setSyncActive] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [signalSent, setSignalSent] = useState(false);
   const [signalResponse, setSignalResponse] = useState<string | null>(null);
   const [supplementChecks, setSupplementChecks] = useState<boolean[]>(
@@ -150,6 +155,30 @@ export default function PartnerDashboard() {
   const [themeId, setThemeId] = useState(() => getSelectedTheme());
   const [showThemePicker, setShowThemePicker] = useState(false);
   const theme = getThemeById(themeId);
+
+  function applyPartnerStatus(ps: PartnerStatus) {
+    const s = ps.fertility_status as CycleStatus;
+    if (s) setCycleStatus(s);
+    if (ps.cycle_day) setCycleDay(ps.cycle_day);
+    if (ps.recommendation) setLiveRecommendation(ps.recommendation);
+    if (ps.updated_at) setLastSyncTime(ps.updated_at);
+    setSyncActive(true);
+  }
+
+  // Pull status on mount + subscribe to realtime
+  useEffect(() => {
+    if (!isSyncEnabled()) return;
+
+    pullStatus().then(ps => {
+      if (ps) applyPartnerStatus(ps);
+    });
+
+    const unsub = subscribeToStatus((ps) => {
+      applyPartnerStatus(ps);
+    });
+
+    return () => { if (unsub) unsub(); };
+  }, []);
 
   useEffect(() => {
     const handleStorage = () => setThemeId(getSelectedTheme());
@@ -174,22 +203,38 @@ export default function PartnerDashboard() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Demo Status Switcher */}
-      <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(STATUS_MESSAGES) as CycleStatus[]).map(s => (
-          <button
-            key={s}
-            onClick={() => setCycleStatus(s)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-xl transition-all ${
-              cycleStatus === s
-                ? 'bg-warm-800 text-white'
-                : 'bg-warm-50 text-warm-400 hover:text-warm-600'
-            }`}
-          >
-            {s.replace('_', ' ')}
-          </button>
-        ))}
-      </div>
+      {/* Sync Status / Demo Switcher */}
+      {syncActive ? (
+        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 rounded-xl border border-emerald-200">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-medium text-emerald-700">
+            Live from her app
+            {cycleDay && <> — Cycle Day {cycleDay}</>}
+          </span>
+          {lastSyncTime && (
+            <span className="text-[10px] text-emerald-500 ml-auto">
+              {new Date(lastSyncTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="w-full text-[10px] text-warm-300 font-medium mb-1">Demo mode — no partner sync configured</span>
+          {(Object.keys(STATUS_MESSAGES) as CycleStatus[]).map(s => (
+            <button
+              key={s}
+              onClick={() => setCycleStatus(s)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-xl transition-all ${
+                cycleStatus === s
+                  ? 'bg-warm-800 text-white'
+                  : 'bg-warm-50 text-warm-400 hover:text-warm-600'
+              }`}
+            >
+              {s.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 1. Hero Card */}
       <div className={`bg-gradient-to-br ${theme.gradient} rounded-3xl p-6 md:p-8 text-white shadow-lg shadow-indigo-200/40 relative overflow-hidden`}>

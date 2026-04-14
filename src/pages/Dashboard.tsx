@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
@@ -10,6 +10,7 @@ import StartCyclePrompt from '../components/StartCyclePrompt';
 import { getUserRole, isOnboarded } from '../components/StartCyclePrompt';
 import WeekStrip from '../components/WeekStrip';
 import type { FertilityStatus, CyclePhase } from '../lib/types';
+import { pushStatus, isSyncEnabled } from '../lib/sync';
 
 const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -146,6 +147,24 @@ export default function Dashboard() {
   const displayPhase = previewMode ? preview.phase : (assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' as CyclePhase : 'follicular' as CyclePhase));
   const displayRecommendation = previewMode ? preview.recommendation : (assessment?.recommendation ?? 'Log your morning readings to receive your personalized insight.');
   const displaySignals = previewMode ? preview.signals : (assessment?.signals ?? []);
+
+  // Push fertility status to partner via Supabase (if configured)
+  const lastPushedRef = useRef('');
+  useEffect(() => {
+    if (previewMode || !isSyncEnabled()) return;
+    const key = `${realStatus}:${realCycleDay}`;
+    if (key === lastPushedRef.current) return;
+    lastPushedRef.current = key;
+
+    const phase = assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' : 'follicular');
+    const recommendation = assessment?.recommendation ?? '';
+    pushStatus({
+      fertilityStatus: realStatus,
+      cycleDay: realCycleDay,
+      phase,
+      recommendation,
+    });
+  }, [realStatus, realCycleDay, previewMode, assessment]);
 
   function nextPreview() {
     setPreviewIndex(i => (i + 1) % ALL_STATUSES.length);

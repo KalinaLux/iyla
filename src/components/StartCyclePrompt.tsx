@@ -21,6 +21,7 @@ import {
   setSelectedTheme,
 } from '../lib/signal-themes';
 import { seedKalinaProfile, seedDominickProfile } from '../lib/seed-data';
+import { savePairCode } from '../lib/sync';
 
 type Role = null | 'her' | 'partner';
 type HerStep = 'welcome' | 'cycle' | 'theme' | 'code' | 'done';
@@ -229,6 +230,7 @@ export default function StartCyclePrompt() {
   async function finishHer() {
     await db.cycles.add({ startDate, outcome: 'ongoing' });
     setSelectedTheme(themeId);
+    savePairCode(generatedCode);
     localStorage.setItem(ROLE_STORAGE_KEY, 'her');
     localStorage.setItem(ONBOARDED_KEY, 'true');
     setHerStep('done');
@@ -236,10 +238,11 @@ export default function StartCyclePrompt() {
 
   function finishHim() {
     setSelectedTheme(themeId);
+    const code = inviteCode || enteredCode.join('');
+    if (code) savePairCode(code);
     localStorage.setItem(ROLE_STORAGE_KEY, 'partner');
     localStorage.setItem(ONBOARDED_KEY, 'true');
     setHisStep('done');
-    // Strip invite param from URL before navigating
     window.location.href = '/partner';
   }
 

@@ -24,5 +24,8 @@ dist-ssr
 *.sw?
 .vercel
 
-# Private health data — never commit
+# Private data — never commit
 src/lib/seed-data.local.ts
+.env
+.env.local
+.env.*.local
