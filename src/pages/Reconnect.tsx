@@ -1285,19 +1285,24 @@ export default function Reconnect() {
   const [view, setView] = useState<MainView>('stages');
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null);
 
-  const profile = useLiveQuery(() => reconnectDb.profiles.toCollection().first());
+  const profile = useLiveQuery(
+    () => reconnectDb.profiles.toCollection().first().then(p => p ?? null),
+    [],
+    undefined as ReconnectProfile | null | undefined,
+  );
   const sessions = useLiveQuery(() => reconnectDb.sessions.toArray()) ?? [];
 
-  const hasProfile = profile !== undefined && profile !== null && profile.onboardingComplete;
+  const isLoading = profile === undefined;
+  const hasProfile = profile != null && profile.onboardingComplete;
 
   useEffect(() => {
-    if (profile === undefined) return; // still loading
-    if (!profile || !profile.onboardingComplete) {
+    if (isLoading) return;
+    if (!hasProfile) {
       setView('onboarding');
     }
-  }, [profile]);
+  }, [isLoading, hasProfile]);
 
-  if (profile === undefined) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-8 h-8 rounded-full border-2 border-rose-300 border-t-transparent animate-spin" />
