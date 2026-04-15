@@ -120,38 +120,24 @@ export default function Dashboard() {
   const supplements = useSupplements();
   const supplementLogs = useSupplementLogs(today);
 
-  if (getUserRole() === 'partner' && isOnboarded()) {
-    window.location.href = '/partner';
-    return null;
-  }
+  // All hooks must be called before any conditional returns
+  const lastPushedRef = useRef('');
 
-  if (!cycle) {
-    return <StartCyclePrompt />;
-  }
-
-  const startDate = new Date(cycle.startDate + 'T00:00:00');
+  const startDate = cycle ? new Date(cycle.startDate + 'T00:00:00') : null;
   const todayDate = new Date(today + 'T00:00:00');
-  const realCycleDay = Math.floor((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const realCycleDay = startDate
+    ? Math.floor((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    : 0;
 
-  const assessment = todayReading
+  const assessment = todayReading && cycle
     ? assessFertility(todayReading, recentReadings, realCycleDay)
     : null;
 
-  const realStatus: FertilityStatus = assessment?.status ?? (realCycleDay <= 5 ? 'menstrual' : 'low');
-
-  const previewStatus = ALL_STATUSES[previewIndex];
-  const preview = PREVIEW_DATA[previewStatus];
-
-  const status = previewMode ? previewStatus : realStatus;
-  const cycleDay = previewMode ? preview.cd : realCycleDay;
-  const displayPhase = previewMode ? preview.phase : (assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' as CyclePhase : 'follicular' as CyclePhase));
-  const displayRecommendation = previewMode ? preview.recommendation : (assessment?.recommendation ?? 'Log your morning readings to receive your personalized insight.');
-  const displaySignals = previewMode ? preview.signals : (assessment?.signals ?? []);
+  const realStatus: FertilityStatus = assessment?.status ?? (realCycleDay <= 5 && realCycleDay > 0 ? 'menstrual' : 'low');
 
   // Push fertility status to partner via Supabase (if configured)
-  const lastPushedRef = useRef('');
   useEffect(() => {
-    if (previewMode || !isSyncEnabled()) return;
+    if (!cycle || previewMode || !isSyncEnabled()) return;
     const key = `${realStatus}:${realCycleDay}`;
     if (key === lastPushedRef.current) return;
     lastPushedRef.current = key;
@@ -164,7 +150,25 @@ export default function Dashboard() {
       phase,
       recommendation,
     });
-  }, [realStatus, realCycleDay, previewMode, assessment]);
+  }, [cycle, realStatus, realCycleDay, previewMode, assessment]);
+
+  if (getUserRole() === 'partner' && isOnboarded()) {
+    window.location.href = '/partner';
+    return null;
+  }
+
+  if (!cycle) {
+    return <StartCyclePrompt />;
+  }
+
+  const previewStatus = ALL_STATUSES[previewIndex];
+  const preview = PREVIEW_DATA[previewStatus];
+
+  const status = previewMode ? previewStatus : realStatus;
+  const cycleDay = previewMode ? preview.cd : realCycleDay;
+  const displayPhase = previewMode ? preview.phase : (assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' as CyclePhase : 'follicular' as CyclePhase));
+  const displayRecommendation = previewMode ? preview.recommendation : (assessment?.recommendation ?? 'Log your morning readings to receive your personalized insight.');
+  const displaySignals = previewMode ? preview.signals : (assessment?.signals ?? []);
 
   function nextPreview() {
     setPreviewIndex(i => (i + 1) % ALL_STATUSES.length);
