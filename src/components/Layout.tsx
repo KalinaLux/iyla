@@ -121,7 +121,7 @@ export default function Layout() {
       </aside>
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-warm-100 px-5 py-3.5 flex items-center justify-between">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-warm-100 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-400 flex items-center justify-center">
             <Sparkles size={12} className="text-white" strokeWidth={2} />
@@ -143,7 +143,7 @@ export default function Layout() {
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-2xl pt-16 rounded-r-3xl flex flex-col">
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-2xl rounded-r-3xl flex flex-col" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' }}>
             <nav className="flex-1 p-3 space-y-4 overflow-y-auto pb-8">
               {navSections.map(({ section, items }) => (
                 <div key={section}>
@@ -177,7 +177,7 @@ export default function Layout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto md:pt-0 pt-14">
+      <main className="flex-1 overflow-y-auto md:pt-0" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3.25rem)' }}>
         <div className="max-w-5xl mx-auto p-5 md:p-10">
           <Outlet />
         </div>

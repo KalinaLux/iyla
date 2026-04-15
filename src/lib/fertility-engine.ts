@@ -23,91 +23,130 @@ export function assessFertility(
   const signals: SignalReport[] = [];
   let fertilityScore = 0;
   let signalCount = 0;
+  let ovulationConfirmed = false;
 
+  // ─── LH (Inito) ─────────────────────────────────────────
   if (todayReading.lh != null) {
     signalCount++;
-    if (todayReading.lh >= 20) {
+    if (todayReading.lh >= 15) {
       fertilityScore += 3;
       signals.push({ source: 'Inito', signal: `LH surge detected (${todayReading.lh} mIU/mL)`, direction: 'positive' });
-    } else if (todayReading.lh >= 10) {
-      fertilityScore += 1.5;
+    } else if (todayReading.lh >= 5) {
+      fertilityScore += 2;
       signals.push({ source: 'Inito', signal: `LH rising (${todayReading.lh} mIU/mL)`, direction: 'positive' });
+    } else if (todayReading.lh >= 1) {
+      fertilityScore += 0.5;
+      signals.push({ source: 'Inito', signal: `LH low-rising (${todayReading.lh} mIU/mL)`, direction: 'neutral' });
     } else {
       signals.push({ source: 'Inito', signal: `LH baseline (${todayReading.lh} mIU/mL)`, direction: 'neutral' });
     }
   }
 
+  // ─── E3G / Estrogen (Inito) ─────────────────────────────
   if (todayReading.e3g != null) {
     signalCount++;
     const prevE3g = recentReadings.filter(r => r.e3g != null).map(r => r.e3g!);
     const avgPrevE3g = prevE3g.length > 0 ? prevE3g.reduce((a, b) => a + b, 0) / prevE3g.length : 0;
 
-    if (todayReading.e3g > avgPrevE3g * 1.3 && avgPrevE3g > 0) {
+    if (todayReading.e3g >= 100) {
       fertilityScore += 2;
-      signals.push({ source: 'Inito', signal: `Estrogen rising significantly (${todayReading.e3g} pg/mL)`, direction: 'positive' });
-    } else if (todayReading.e3g > avgPrevE3g * 1.1 && avgPrevE3g > 0) {
-      fertilityScore += 1;
-      signals.push({ source: 'Inito', signal: `Estrogen gradually rising (${todayReading.e3g} pg/mL)`, direction: 'positive' });
+      signals.push({ source: 'Inito', signal: `Estrogen elevated (${todayReading.e3g.toFixed(0)} pg/mL) — fertile range`, direction: 'positive' });
+    } else if (todayReading.e3g > avgPrevE3g * 1.2 && avgPrevE3g > 0) {
+      fertilityScore += 1.5;
+      signals.push({ source: 'Inito', signal: `Estrogen rising (${todayReading.e3g.toFixed(0)} pg/mL)`, direction: 'positive' });
+    } else if (todayReading.e3g > avgPrevE3g * 1.05 && avgPrevE3g > 0) {
+      fertilityScore += 0.5;
+      signals.push({ source: 'Inito', signal: `Estrogen gradually rising (${todayReading.e3g.toFixed(0)} pg/mL)`, direction: 'neutral' });
     } else {
-      signals.push({ source: 'Inito', signal: `Estrogen stable (${todayReading.e3g} pg/mL)`, direction: 'neutral' });
+      signals.push({ source: 'Inito', signal: `Estrogen stable (${todayReading.e3g?.toFixed(0) ?? '—'} pg/mL)`, direction: 'neutral' });
     }
   }
 
+  // ─── PdG / Progesterone (Inito) ─────────────────────────
   if (todayReading.pdg != null) {
     signalCount++;
     if (todayReading.pdg >= 5) {
+      fertilityScore -= 2;
+      ovulationConfirmed = true;
+      signals.push({ source: 'Inito', signal: `PdG confirmed (${todayReading.pdg} µg/mL) — ovulation verified`, direction: 'negative' });
+    } else if (todayReading.pdg >= 3) {
       fertilityScore -= 1;
-      signals.push({ source: 'Inito', signal: `PdG rising (${todayReading.pdg} µg/mL) — ovulation likely confirmed`, direction: 'negative' });
+      signals.push({ source: 'Inito', signal: `PdG rising (${todayReading.pdg} µg/mL) — likely post-ovulatory`, direction: 'negative' });
     } else {
       signals.push({ source: 'Inito', signal: `PdG low (${todayReading.pdg} µg/mL) — pre-ovulatory`, direction: 'neutral' });
     }
   }
 
-  if (todayReading.keggImpedance != null) {
+  // ─── Kegg (Cervical Mucus Impedance) ────────────────────
+  if (todayReading.keggImpedance != null || todayReading.keggScore != null) {
     signalCount++;
-    const prevKegg = recentReadings.filter(r => r.keggImpedance != null).map(r => r.keggImpedance!);
+    const prevKegg = recentReadings
+      .filter(r => r.keggImpedance != null)
+      .map(r => ({ imp: r.keggImpedance!, cd: r.cycleDay }));
 
-    if (prevKegg.length >= 2) {
-      const trend = todayReading.keggImpedance - prevKegg[prevKegg.length - 1];
-      if (trend < -50) {
-        fertilityScore += 2;
-        signals.push({ source: 'Kegg', signal: 'Impedance dropping sharply — fertile mucus developing', direction: 'positive' });
-      } else if (trend < -20) {
-        fertilityScore += 1;
-        signals.push({ source: 'Kegg', signal: 'Impedance declining — approaching fertile window', direction: 'positive' });
-      } else if (trend > 50) {
+    if (prevKegg.length >= 1 && todayReading.keggImpedance != null) {
+      // Look at the overall trend from peak impedance, not just yesterday
+      const maxImp = Math.max(...prevKegg.map(k => k.imp));
+      const dropFromPeak = maxImp - todayReading.keggImpedance;
+      const yesterdayImp = prevKegg[prevKegg.length - 1].imp;
+      const dayOverDay = yesterdayImp - todayReading.keggImpedance;
+
+      if (dropFromPeak >= 40 || (dayOverDay >= 20 && dropFromPeak >= 30)) {
+        fertilityScore += 2.5;
+        signals.push({ source: 'Kegg', signal: `Impedance dropped ${dropFromPeak} from peak — fertile mucus detected`, direction: 'positive' });
+      } else if (dropFromPeak >= 20 || dayOverDay >= 10) {
+        fertilityScore += 1.5;
+        signals.push({ source: 'Kegg', signal: `Impedance declining (↓${dropFromPeak} from peak) — approaching fertile window`, direction: 'positive' });
+      } else if (todayReading.keggImpedance > maxImp) {
         fertilityScore -= 1;
         signals.push({ source: 'Kegg', signal: 'Impedance rising — post-ovulatory pattern', direction: 'negative' });
       } else {
-        signals.push({ source: 'Kegg', signal: 'Impedance stable', direction: 'neutral' });
+        signals.push({ source: 'Kegg', signal: `Impedance: ${todayReading.keggImpedance} (stable)`, direction: 'neutral' });
+      }
+    } else if (todayReading.keggScore != null) {
+      // Use keggScore as a proxy if impedance trend isn't available yet
+      if (todayReading.keggScore >= 40) {
+        fertilityScore += 1.5;
+        signals.push({ source: 'Kegg', signal: `Fertility score ${todayReading.keggScore} — fertile range`, direction: 'positive' });
+      } else if (todayReading.keggScore >= 20) {
+        fertilityScore += 0.5;
+        signals.push({ source: 'Kegg', signal: `Fertility score ${todayReading.keggScore} — transitioning`, direction: 'neutral' });
+      } else {
+        signals.push({ source: 'Kegg', signal: `Fertility score ${todayReading.keggScore} — baseline`, direction: 'neutral' });
       }
     } else {
-      signals.push({ source: 'Kegg', signal: `Impedance: ${todayReading.keggImpedance} (building baseline)`, direction: 'neutral' });
+      signals.push({ source: 'Kegg', signal: `Impedance: ${todayReading.keggImpedance ?? '—'} (building baseline)`, direction: 'neutral' });
     }
   }
 
+  // ─── BBT (TempDrop) ─────────────────────────────────────
   if (todayReading.bbt != null) {
     signalCount++;
     const prevBBTs = recentReadings.filter(r => r.bbt != null).map(r => r.bbt!);
 
     if (prevBBTs.length >= 3) {
-      const baseline = prevBBTs.slice(0, -1).reduce((a, b) => a + b, 0) / (prevBBTs.length - 1);
+      const baseline = prevBBTs.slice(0, Math.max(1, prevBBTs.length - 1)).reduce((a, b) => a + b, 0) / Math.max(1, prevBBTs.length - 1);
       const shift = todayReading.bbt - baseline;
 
       if (shift >= 0.3) {
         fertilityScore -= 2;
-        signals.push({ source: 'TempDrop', signal: `Thermal shift detected (+${shift.toFixed(2)}°F) — ovulation confirmed`, direction: 'negative' });
+        ovulationConfirmed = true;
+        signals.push({ source: 'TempDrop', signal: `Thermal shift confirmed (+${shift.toFixed(2)}°F) — ovulation verified`, direction: 'negative' });
       } else if (shift >= 0.15) {
         fertilityScore -= 0.5;
-        signals.push({ source: 'TempDrop', signal: `Possible thermal shift (+${shift.toFixed(2)}°F) — watching`, direction: 'neutral' });
+        signals.push({ source: 'TempDrop', signal: `Possible thermal shift (+${shift.toFixed(2)}°F) — monitoring`, direction: 'neutral' });
+      } else if (todayReading.bbt < 97.5) {
+        fertilityScore += 0.5;
+        signals.push({ source: 'TempDrop', signal: `BBT low (${todayReading.bbt}°F) — follicular range, pre-ovulatory`, direction: 'neutral' });
       } else {
-        signals.push({ source: 'TempDrop', signal: `BBT in follicular range (${todayReading.bbt}°F)`, direction: 'neutral' });
+        signals.push({ source: 'TempDrop', signal: `BBT: ${todayReading.bbt}°F`, direction: 'neutral' });
       }
     } else {
       signals.push({ source: 'TempDrop', signal: `BBT: ${todayReading.bbt}°F (building baseline)`, direction: 'neutral' });
     }
   }
 
+  // ─── Cervical Mucus (Manual) ────────────────────────────
   if (todayReading.cervicalMucus && todayReading.cervicalMucus !== 'not_checked') {
     signalCount++;
     const mucusScores: Record<string, number> = {
@@ -122,42 +161,71 @@ export function assessFertility(
     });
   }
 
+  // ─── Cycle Day Awareness ────────────────────────────────
+  // Typical fertile window is CD10-CD17. Boost score during this window
+  // when device signals are borderline.
+  if (cycleDay >= 10 && cycleDay <= 17 && !ovulationConfirmed) {
+    const cdBoost = cycleDay >= 12 && cycleDay <= 15 ? 1.0 : 0.5;
+    if (fertilityScore > 0 && fertilityScore < 3) {
+      fertilityScore += cdBoost;
+      signals.push({
+        source: 'Cycle Pattern',
+        signal: `CD${cycleDay} — within typical fertile window (boosted)`,
+        direction: 'positive',
+      });
+    } else if (signalCount === 0) {
+      // No device data but we're in the window — flag it
+      fertilityScore += cdBoost;
+      signals.push({
+        source: 'Cycle Pattern',
+        signal: `CD${cycleDay} — statistically likely fertile window. Log device readings for better accuracy.`,
+        direction: 'positive',
+      });
+    }
+  }
+
+  // ─── Concordance ────────────────────────────────────────
   const positiveSignals = signals.filter(s => s.direction === 'positive').length;
   const negativeSignals = signals.filter(s => s.direction === 'negative').length;
   const concordance = signalCount >= 2 && (positiveSignals === 0 || negativeSignals === 0);
 
+  // ─── Status Determination ───────────────────────────────
   let status: FertilityStatus;
   let phase: CyclePhase;
   let recommendation: string;
 
-  if (cycleDay <= 5) {
+  if (cycleDay <= 4) {
     status = 'menstrual';
     phase = 'menstrual';
-    recommendation = 'Rest and replenish. Focus on iron-rich foods, warmth, and gentle movement today.';
-  } else if (fertilityScore >= 5) {
+    recommendation = 'Rest and replenish. Focus on iron-rich foods, warmth, and gentle movement.';
+  } else if (ovulationConfirmed) {
+    status = 'confirmed_ovulation';
+    phase = 'luteal';
+    recommendation = 'Ovulation confirmed. Nourish yourself — progesterone support, rest, and calm.';
+  } else if (fertilityScore >= 4.5) {
     status = 'peak';
     phase = 'ovulatory';
-    recommendation = 'Your body is giving strong signals. Multiple sources confirm peak fertility today.';
+    recommendation = 'Multiple signals confirm peak fertility. This is your window — today matters.';
   } else if (fertilityScore >= 3) {
     status = 'high';
     phase = 'ovulatory';
-    recommendation = 'Your fertile window is open. Your body is doing beautiful work right now.';
+    recommendation = 'Your fertile window is open. Your body is showing strong signals right now.';
   } else if (fertilityScore >= 1.5) {
     status = 'rising';
     phase = 'follicular';
     recommendation = 'Fertility is building. Your body is preparing — the window is approaching.';
-  } else if (negativeSignals >= 2 || (todayReading.pdg != null && todayReading.pdg >= 5)) {
-    status = 'confirmed_ovulation';
-    phase = 'luteal';
-    recommendation = 'Ovulation confirmed. Nourish yourself — progesterone support, rest, and calm.';
-  } else if (negativeSignals >= 1 && cycleDay > 14) {
+  } else if (negativeSignals >= 2 && cycleDay > 14) {
     status = 'luteal';
     phase = 'luteal';
     recommendation = 'You\'re in the luteal phase. Prioritize sleep, warmth, and your supplement protocol.';
+  } else if (cycleDay <= 6) {
+    status = cycleDay <= 5 ? 'menstrual' : 'low';
+    phase = cycleDay <= 5 ? 'menstrual' : 'follicular';
+    recommendation = 'Early cycle. Your body is resetting and building toward the next window.';
   } else {
     status = 'low';
     phase = 'follicular';
-    recommendation = 'Early follicular phase. Your body is quietly building toward the next window.';
+    recommendation = 'Early follicular phase. Log your device readings for personalized fertile window detection.';
   }
 
   const confidence = signalCount >= 3 ? 'high' : signalCount >= 2 ? 'medium' : 'low';
