@@ -4,6 +4,7 @@ import {
   shouldHoldStatus,
   type ConcordanceResult,
 } from './signal-concordance';
+import type { PersonalBaselines } from './baselines';
 
 interface FertilityAssessment {
   status: FertilityStatus;
@@ -13,6 +14,8 @@ interface FertilityAssessment {
   recommendation: string;
   concordance: boolean;
   concordanceResult?: ConcordanceResult;
+  /** True when the engine used personalized thresholds (vs generic ones) */
+  personalized: boolean;
 }
 
 interface SignalReport {
@@ -28,6 +31,8 @@ export interface AssessFertilityOptions {
   cycleHistory?: Array<{ peakLhDay: number | null; peakLhValue: number | null }>;
   /** The status computed for the previous day — used to prevent unjustified regressions */
   priorStatus?: FertilityStatus | null;
+  /** Personalized baselines — when present, tunes LH / PdG / BBT / ov-day thresholds to HER body */
+  baselines?: PersonalBaselines | null;
 }
 
 export function assessFertility(
@@ -41,13 +46,64 @@ export function assessFertility(
   let signalCount = 0;
   let ovulationConfirmed = false;
 
+  // ─── Personalized thresholds (from baselines, when available) ───
+  const baselines = options.baselines ?? null;
+  const personalized = !!baselines && baselines.sampleSize >= 2;
+
+  // LH surge threshold — HER typical peak × 0.75 (vs generic 15)
+  // Rising threshold — HER typical peak × 0.35 (vs generic 5)
+  // Sharp drops here mean: some women peak at LH 6, so a 4 IS a surge for them.
+  const lhSurgeThreshold = personalized && baselines!.lhSurge.typicalPeakValue != null
+    ? Math.max(3, baselines!.lhSurge.typicalPeakValue * 0.75)
+    : 15;
+  const lhRisingThreshold = personalized && baselines!.adaptiveRules.lhSurgeThresholdSuggestion != null
+    ? baselines!.adaptiveRules.lhSurgeThresholdSuggestion
+    : 5;
+
+  // PdG ovulation-confirm threshold — HER personalized value (default 5)
+  const pdgConfirmThreshold = personalized && baselines!.hormones.pdgOvulationConfirmThreshold != null
+    ? baselines!.hormones.pdgOvulationConfirmThreshold
+    : 5;
+  const pdgRisingThreshold = pdgConfirmThreshold * 0.6; // ~3 when confirm is 5
+
+  // BBT shift threshold — scaled to HER typical shift size
+  const bbtShiftThreshold = personalized && baselines!.bbt.thermalShiftSize != null
+    ? Math.max(0.2, baselines!.bbt.thermalShiftSize * 0.7)
+    : 0.3;
+  const bbtMinorShiftThreshold = bbtShiftThreshold * 0.5;
+
+  // BBT follicular max — HER typical follicular baseline + 2× stddev
+  const bbtFollicularMax = personalized && baselines!.bbt.follicularBaseline != null
+    ? baselines!.bbt.follicularBaseline + Math.max(0.15, baselines!.bbt.follicularStddev * 2)
+    : 97.5;
+
+  // Kegg drop-from-peak — scaled to HER typical drop size
+  const keggBigDropThreshold = personalized && baselines!.kegg.typicalDropSize != null
+    ? Math.max(20, baselines!.kegg.typicalDropSize * 0.7)
+    : 40;
+  const keggSmallDropThreshold = keggBigDropThreshold * 0.5;
+
+  // Fertile window — from HER typical ovulation day (default CD10-17)
+  const [fertileStart, fertileEnd]: [number, number] =
+    personalized && baselines!.adaptiveRules.fertileWindowCdRange != null
+      ? baselines!.adaptiveRules.fertileWindowCdRange
+      : [10, 17];
+  const peakCdStart = Math.max(fertileStart + 2, fertileStart);
+  const peakCdEnd = Math.min(fertileEnd, fertileEnd);
+
   // ─── LH (Inito) ─────────────────────────────────────────
   if (todayReading.lh != null) {
     signalCount++;
-    if (todayReading.lh >= 15) {
+    if (todayReading.lh >= lhSurgeThreshold) {
       fertilityScore += 3;
-      signals.push({ source: 'Inito', signal: `LH surge detected (${todayReading.lh} mIU/mL)`, direction: 'positive' });
-    } else if (todayReading.lh >= 5) {
+      signals.push({
+        source: 'Inito',
+        signal: personalized
+          ? `LH surge detected (${todayReading.lh} mIU/mL, your typical peak ~${baselines!.lhSurge.typicalPeakValue!.toFixed(1)})`
+          : `LH surge detected (${todayReading.lh} mIU/mL)`,
+        direction: 'positive',
+      });
+    } else if (todayReading.lh >= lhRisingThreshold) {
       fertilityScore += 2;
       signals.push({ source: 'Inito', signal: `LH rising (${todayReading.lh} mIU/mL)`, direction: 'positive' });
     } else if (todayReading.lh >= 1) {
@@ -81,11 +137,17 @@ export function assessFertility(
   // ─── PdG / Progesterone (Inito) ─────────────────────────
   if (todayReading.pdg != null) {
     signalCount++;
-    if (todayReading.pdg >= 5) {
+    if (todayReading.pdg >= pdgConfirmThreshold) {
       fertilityScore -= 2;
       ovulationConfirmed = true;
-      signals.push({ source: 'Inito', signal: `PdG confirmed (${todayReading.pdg} µg/mL) — ovulation verified`, direction: 'negative' });
-    } else if (todayReading.pdg >= 3) {
+      signals.push({
+        source: 'Inito',
+        signal: personalized
+          ? `PdG confirmed (${todayReading.pdg} µg/mL ≥ your ${pdgConfirmThreshold.toFixed(1)} threshold) — ovulation verified`
+          : `PdG confirmed (${todayReading.pdg} µg/mL) — ovulation verified`,
+        direction: 'negative',
+      });
+    } else if (todayReading.pdg >= pdgRisingThreshold) {
       fertilityScore -= 1;
       signals.push({ source: 'Inito', signal: `PdG rising (${todayReading.pdg} µg/mL) — likely post-ovulatory`, direction: 'negative' });
     } else {
@@ -107,10 +169,16 @@ export function assessFertility(
       const yesterdayImp = prevKegg[prevKegg.length - 1].imp;
       const dayOverDay = yesterdayImp - todayReading.keggImpedance;
 
-      if (dropFromPeak >= 40 || (dayOverDay >= 20 && dropFromPeak >= 30)) {
+      if (dropFromPeak >= keggBigDropThreshold || (dayOverDay >= 20 && dropFromPeak >= keggSmallDropThreshold * 1.5)) {
         fertilityScore += 2.5;
-        signals.push({ source: 'Kegg', signal: `Impedance dropped ${dropFromPeak} from peak — fertile mucus detected`, direction: 'positive' });
-      } else if (dropFromPeak >= 20 || dayOverDay >= 10) {
+        signals.push({
+          source: 'Kegg',
+          signal: personalized
+            ? `Impedance dropped ${dropFromPeak} from peak (your typical drop ~${baselines!.kegg.typicalDropSize}) — fertile mucus detected`
+            : `Impedance dropped ${dropFromPeak} from peak — fertile mucus detected`,
+          direction: 'positive',
+        });
+      } else if (dropFromPeak >= keggSmallDropThreshold || dayOverDay >= 10) {
         fertilityScore += 1.5;
         signals.push({ source: 'Kegg', signal: `Impedance declining (↓${dropFromPeak} from peak) — approaching fertile window`, direction: 'positive' });
       } else if (todayReading.keggImpedance > maxImp) {
@@ -141,17 +209,26 @@ export function assessFertility(
     const prevBBTs = recentReadings.filter(r => r.bbt != null).map(r => r.bbt!);
 
     if (prevBBTs.length >= 3) {
-      const baseline = prevBBTs.slice(0, Math.max(1, prevBBTs.length - 1)).reduce((a, b) => a + b, 0) / Math.max(1, prevBBTs.length - 1);
-      const shift = todayReading.bbt - baseline;
+      // Prefer HER learned follicular baseline over this-cycle average if available
+      const follicularBaseline = personalized && baselines!.bbt.follicularBaseline != null
+        ? baselines!.bbt.follicularBaseline
+        : prevBBTs.slice(0, Math.max(1, prevBBTs.length - 1)).reduce((a, b) => a + b, 0) / Math.max(1, prevBBTs.length - 1);
+      const shift = todayReading.bbt - follicularBaseline;
 
-      if (shift >= 0.3) {
+      if (shift >= bbtShiftThreshold) {
         fertilityScore -= 2;
         ovulationConfirmed = true;
-        signals.push({ source: 'TempDrop', signal: `Thermal shift confirmed (+${shift.toFixed(2)}°F) — ovulation verified`, direction: 'negative' });
-      } else if (shift >= 0.15) {
+        signals.push({
+          source: 'TempDrop',
+          signal: personalized
+            ? `Thermal shift confirmed (+${shift.toFixed(2)}°F over your ${follicularBaseline.toFixed(2)}°F baseline) — ovulation verified`
+            : `Thermal shift confirmed (+${shift.toFixed(2)}°F) — ovulation verified`,
+          direction: 'negative',
+        });
+      } else if (shift >= bbtMinorShiftThreshold) {
         fertilityScore -= 0.5;
         signals.push({ source: 'TempDrop', signal: `Possible thermal shift (+${shift.toFixed(2)}°F) — monitoring`, direction: 'neutral' });
-      } else if (todayReading.bbt < 97.5) {
+      } else if (todayReading.bbt < bbtFollicularMax) {
         fertilityScore += 0.5;
         signals.push({ source: 'TempDrop', signal: `BBT low (${todayReading.bbt}°F) — follicular range, pre-ovulatory`, direction: 'neutral' });
       } else {
@@ -177,24 +254,26 @@ export function assessFertility(
     });
   }
 
-  // ─── Cycle Day Awareness ────────────────────────────────
-  // Typical fertile window is CD10-CD17. Boost score during this window
-  // when device signals are borderline.
-  if (cycleDay >= 10 && cycleDay <= 17 && !ovulationConfirmed) {
-    const cdBoost = cycleDay >= 12 && cycleDay <= 15 ? 1.0 : 0.5;
+  // ─── Cycle Day Awareness (personalized fertile window) ──
+  // Uses HER typical window when baselines are available, else CD10-17.
+  if (cycleDay >= fertileStart && cycleDay <= fertileEnd && !ovulationConfirmed) {
+    const cdBoost = cycleDay >= peakCdStart && cycleDay <= peakCdEnd ? 1.0 : 0.5;
     if (fertilityScore > 0 && fertilityScore < 3) {
       fertilityScore += cdBoost;
       signals.push({
         source: 'Cycle Pattern',
-        signal: `CD${cycleDay} — within typical fertile window (boosted)`,
+        signal: personalized
+          ? `CD${cycleDay} — within YOUR typical fertile window (CD${fertileStart}-${fertileEnd}) — boosted`
+          : `CD${cycleDay} — within typical fertile window (boosted)`,
         direction: 'positive',
       });
     } else if (signalCount === 0) {
-      // No device data but we're in the window — flag it
       fertilityScore += cdBoost;
       signals.push({
         source: 'Cycle Pattern',
-        signal: `CD${cycleDay} — statistically likely fertile window. Log device readings for better accuracy.`,
+        signal: personalized
+          ? `CD${cycleDay} — your typical fertile window (CD${fertileStart}-${fertileEnd}). Log device readings for better accuracy.`
+          : `CD${cycleDay} — statistically likely fertile window. Log device readings for better accuracy.`,
         direction: 'positive',
       });
     }
@@ -269,7 +348,7 @@ export function assessFertility(
     recommendation = 'Holding your fertile status — today\'s reading conflicts with your other signals. iyla is protecting you from a false "window closed" flag.';
   }
 
-  return { status, phase, confidence, signals, recommendation, concordance, concordanceResult };
+  return { status, phase, confidence, signals, recommendation, concordance, concordanceResult, personalized };
 }
 
 export function getStatusColor(status: FertilityStatus): string {

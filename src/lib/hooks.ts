@@ -3,7 +3,12 @@ import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { db } from './db';
 import type { Cycle, DailyReading } from './types';
-import { buildIntelligenceSnapshot, type IntelligenceSnapshot } from './intelligence';
+import {
+  buildIntelligenceSnapshot,
+  type IntelligenceSnapshot,
+  type SymptomPattern,
+  type CycleRetrospective,
+} from './intelligence';
 import { maleDb, type SemenAnalysis, type MaleDailyLog } from './male-factor-db';
 import { computeDadScore, type DadScore } from './dad-score';
 import { computeCoupleScore, type CoupleScore } from './couple-score';
@@ -111,6 +116,18 @@ export function useIntelligence(): IntelligenceSnapshot | null {
       return null;
     }
   }, [data, today]);
+}
+
+/** The most recently closed cycle's retrospective (warm narrative summary). */
+export function useLatestRetrospective(): CycleRetrospective | null {
+  const intelligence = useIntelligence();
+  return intelligence?.latestRetrospective ?? null;
+}
+
+/** Recurring symptom patterns detected across cycles. */
+export function useSymptomPatterns(): SymptomPattern[] {
+  const intelligence = useIntelligence();
+  return intelligence?.symptoms ?? [];
 }
 
 // ──────────────────────────────────────────────────────────────────────────

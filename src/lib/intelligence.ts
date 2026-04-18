@@ -68,6 +68,17 @@ import {
   type DailyBriefing,
 } from './daily-briefing';
 
+import {
+  buildCycleRetrospective,
+  saveRetrospective,
+  type CycleRetrospective,
+} from './cycle-retrospective';
+
+import {
+  detectSymptomPatterns,
+  type SymptomPattern,
+} from './symptom-patterns';
+
 // ── Public shape ────────────────────────────────────────────────────────
 
 export interface IntelligenceSnapshot {
@@ -79,6 +90,8 @@ export interface IntelligenceSnapshot {
   concordance: ConcordanceResult | null;
   baselines: PersonalBaselines;
   briefing: DailyBriefing;
+  symptoms: SymptomPattern[];
+  latestRetrospective: CycleRetrospective | null;
   generatedAt: string;
 }
 
@@ -289,6 +302,8 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     intelligence: {
       score, patterns, correlations, predictions, digest, concordance,
       baselines, briefing: null as unknown as DailyBriefing, // temporary — won't be read by briefing
+      symptoms: [],
+      latestRetrospective: null,
       generatedAt: new Date().toISOString(),
     },
     baselines,
@@ -297,6 +312,47 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     yesterdayReading,
     cycleDay,
   });
+
+  // Symptom patterns — recurring symptoms tied to cycle phase
+  let symptoms: SymptomPattern[] = [];
+  try {
+    symptoms = detectSymptomPatterns(input.cycles, input.readings);
+  } catch (err) {
+    console.error('[iyla intelligence] symptom patterns failed', err);
+  }
+
+  // Cycle retrospective — for the most recently closed cycle
+  let latestRetrospective: CycleRetrospective | null = null;
+  try {
+    const sortedByStartDesc = [...input.cycles].sort((a, b) =>
+      b.startDate.localeCompare(a.startDate),
+    );
+    const latestClosed = sortedByStartDesc.find(c => {
+      if (c.id == null) return false;
+      if (c.id === input.currentCycleId) return false;
+      if (c.endDate) return true;
+      // Consider closed if a newer cycle exists
+      return sortedByStartDesc.some(o => o.startDate > c.startDate);
+    }) ?? null;
+
+    if (latestClosed && latestClosed.id != null) {
+      const retroReadings = input.readings.filter(r => r.cycleId === latestClosed.id);
+      const priorCycles = input.cycles.filter(
+        c => c.id !== latestClosed.id && c.startDate < latestClosed.startDate,
+      );
+      const priorCycleIds = new Set(priorCycles.map(c => c.id));
+      const priorReadings = input.readings.filter(r => priorCycleIds.has(r.cycleId));
+      latestRetrospective = buildCycleRetrospective(
+        latestClosed,
+        retroReadings,
+        priorCycles,
+        priorReadings,
+      );
+      try { saveRetrospective(latestRetrospective); } catch { /* ignore */ }
+    }
+  } catch (err) {
+    console.error('[iyla intelligence] retrospective failed', err);
+  }
 
   return {
     score,
@@ -307,10 +363,23 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     concordance,
     baselines,
     briefing,
+    symptoms,
+    latestRetrospective,
     generatedAt: new Date().toISOString(),
   };
 }
 
 // Re-export commonly used types for convenience
-export type { IylaScore, DetectedPattern, Correlation, CyclePredictions, WeeklyDigest, ConcordanceResult, PersonalBaselines, DailyBriefing };
+export type {
+  IylaScore,
+  DetectedPattern,
+  Correlation,
+  CyclePredictions,
+  WeeklyDigest,
+  ConcordanceResult,
+  PersonalBaselines,
+  DailyBriefing,
+  SymptomPattern,
+  CycleRetrospective,
+};
 export { getMostRecentDigest, getIylaScoreHistory };

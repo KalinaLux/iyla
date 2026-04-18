@@ -10,6 +10,9 @@ import PatternsCard from '../components/intelligence/PatternsCard';
 import PredictionsCard from '../components/intelligence/PredictionsCard';
 import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
 import CycleOverlayCard from '../components/intelligence/CycleOverlayCard';
+import CycleYearCalendar from '../components/intelligence/CycleYearCalendar';
+import SymptomPatternsCard from '../components/intelligence/SymptomPatternsCard';
+import CycleRetrospectiveCard from '../components/intelligence/CycleRetrospectiveCard';
 import { format } from 'date-fns';
 
 const iconMap = {
@@ -108,6 +111,19 @@ export default function Insights() {
       {intelligence && (
         <CorrelationsCard correlations={intelligence.correlations} />
       )}
+
+      {/* Latest cycle retrospective */}
+      {intelligence?.latestRetrospective && (
+        <CycleRetrospectiveCard retrospective={intelligence.latestRetrospective} />
+      )}
+
+      {/* Symptom patterns — recurring symptoms tied to cycle phase */}
+      {intelligence && intelligence.symptoms.length > 0 && (
+        <SymptomPatternsCard patterns={intelligence.symptoms} />
+      )}
+
+      {/* Year at a glance — visual cycle calendar */}
+      <CycleYearCalendar cycles={cycles} readings={readings} />
 
       {/* Cycle overlay — compare this cycle to history */}
       <CycleOverlayCard cycles={cycles} readings={readings} />

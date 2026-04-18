@@ -22,6 +22,10 @@ import DailyBriefing from '../components/intelligence/DailyBriefing';
 import HydrationTracker from '../components/intelligence/HydrationTracker';
 import CoachModal from '../components/intelligence/CoachModal';
 import CoupleScoreCard from '../components/intelligence/CoupleScoreCard';
+import WeeklyOutlookCard from '../components/intelligence/WeeklyOutlookCard';
+import SymptomPatternsCard from '../components/intelligence/SymptomPatternsCard';
+import CycleRetrospectiveCard from '../components/intelligence/CycleRetrospectiveCard';
+import OcrButton from '../components/OcrButton';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -185,6 +189,7 @@ export default function Dashboard() {
         yesterdayReading,
         cycleHistory,
         priorStatus,
+        baselines: intelligence?.baselines ?? null,
       })
     : null;
 
@@ -193,6 +198,7 @@ export default function Dashboard() {
         yesterdayReading: todayYesterday,
         cycleHistory,
         priorStatus: todayPriorStatus,
+        baselines: intelligence?.baselines ?? null,
       })
     : null;
 
@@ -395,6 +401,15 @@ export default function Dashboard() {
                     Signals diverging
                   </span>
                 )}
+                {!previewMode && assessment?.personalized && (
+                  <span
+                    className="text-xs px-3 py-1 rounded-full bg-white/20 text-white font-medium backdrop-blur-sm flex items-center gap-1"
+                    title="iyla is using thresholds tuned to your past cycles, not generic ones."
+                  >
+                    <Sparkles size={10} strokeWidth={2} />
+                    Tuned to you
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -490,23 +505,45 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Weekly Outlook — 7-day forecast with status per day */}
+      {intelligence && !previewMode && (
+        <WeeklyOutlookCard
+          currentCycle={cycle ?? null}
+          readings={readings}
+          predictions={intelligence.predictions}
+        />
+      )}
+
       {/* Cycle Chart */}
       <div className="bg-white rounded-3xl border border-warm-100 p-7 shadow-sm">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-warm-700">Cycle Overview</h2>
-          <div className="flex items-center gap-1.5 text-xs text-warm-400 font-medium">
-            <TrendingUp size={13} strokeWidth={2} />
-            {readings.length} readings
+          <div className="flex items-center gap-2">
+            <OcrButton date={todayStr} cycleId={cycle?.id} variant="inline" />
+            <div className="flex items-center gap-1.5 text-xs text-warm-400 font-medium">
+              <TrendingUp size={13} strokeWidth={2} />
+              {readings.length} readings
+            </div>
           </div>
         </div>
         <CycleChart readings={readings} cycleDay={todayCycleDay} />
       </div>
+
+      {/* Cycle Retrospective — only when a cycle has closed */}
+      {intelligence?.latestRetrospective && !previewMode && (
+        <CycleRetrospectiveCard retrospective={intelligence.latestRetrospective} />
+      )}
 
       {/* Pattern detection */}
       {intelligence && !previewMode && intelligence.patterns.length > 0 && (
         <div data-section="patterns">
           <PatternsCard patterns={intelligence.patterns} limit={4} />
         </div>
+      )}
+
+      {/* Symptom patterns — recurring symptoms tied to cycle phase */}
+      {intelligence && !previewMode && intelligence.symptoms.length > 0 && (
+        <SymptomPatternsCard patterns={intelligence.symptoms} />
       )}
 
       {/* Supplement Checklist */}

@@ -3,6 +3,7 @@ import { Plus, TrendingUp, TrendingDown, Minus, FlaskConical } from 'lucide-reac
 import { useLabs } from '../lib/hooks';
 import { db } from '../lib/db';
 import Modal from '../components/Modal';
+import OcrButton from '../components/OcrButton';
 import { LAB_DEFINITIONS } from '../lib/types';
 import { format } from 'date-fns';
 import {
@@ -64,13 +65,16 @@ export default function Labs() {
           <h1 className="text-2xl font-semibold text-warm-800">Lab Tracking</h1>
           <p className="text-sm text-warm-400 mt-0.5">Fertility-optimized reference ranges</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-warm-800 text-white px-5 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-900 transition-all shadow-sm"
-        >
-          <Plus size={16} />
-          Add Result
-        </button>
+        <div className="flex items-center gap-2">
+          <OcrButton date={format(new Date(), 'yyyy-MM-dd')} variant="inline" />
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 bg-warm-800 text-white px-5 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-900 transition-all shadow-sm"
+          >
+            <Plus size={16} />
+            Add Result
+          </button>
+        </div>
       </div>
 
       {trendData.length > 0 && testForTrend && (

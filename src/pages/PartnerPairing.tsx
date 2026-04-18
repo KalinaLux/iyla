@@ -17,7 +17,12 @@ import {
   Wind,
   Send,
   MessageCircle,
+  QrCode,
+  Camera,
+  X,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import QrScanner from 'qr-scanner';
 import { SIGNAL_THEMES, getSelectedTheme, setSelectedTheme } from '../lib/signal-themes';
 import {
   savePairCode,
@@ -261,9 +266,14 @@ export default function PartnerPairing() {
   const [savedPairCode, setSavedPairCode] = useState<string | null>(() => getPairCode());
   const [partnerStatus, setPartnerStatus] = useState<PartnerStatus | null>(null);
   const [connectNotice, setConnectNotice] = useState<{ tone: 'info' | 'warn'; message: string } | null>(null);
+  const [showQr, setShowQr] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerRef = useRef<QrScanner | null>(null);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -334,6 +344,66 @@ export default function PartnerPairing() {
     const focusIdx = Math.min(pasted.length, 5);
     inputRefs.current[focusIdx]?.focus();
   };
+
+  /** Extract a 6-char pairing code from either a bare code or an invite URL */
+  const parsePairingInput = (raw: string): string | null => {
+    const s = raw.trim();
+    // Try URL first (?invite=ABC123)
+    const match = s.match(/[?&]invite=([A-Za-z0-9]{6})/i);
+    if (match) return match[1].toUpperCase();
+    // Bare 6-char code
+    const bare = s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (bare.length === 6) return bare;
+    return null;
+  };
+
+  const openScanner = async () => {
+    setScanError(null);
+    setShowScanner(true);
+    // Wait a tick for the video element to mount
+    setTimeout(async () => {
+      if (!videoRef.current) return;
+      try {
+        const scanner = new QrScanner(
+          videoRef.current,
+          (result) => {
+            const code = parsePairingInput(result.data);
+            if (!code) {
+              setScanError("That QR doesn't look like an iyla pairing code. Try again?");
+              return;
+            }
+            // Fill the fields + close scanner
+            setEnteredCode(code.split(''));
+            closeScanner();
+          },
+          { highlightScanRegion: true, highlightCodeOutline: true, returnDetailedScanResult: true },
+        );
+        scannerRef.current = scanner;
+        await scanner.start();
+      } catch (err) {
+        console.error('QR scanner error:', err);
+        setScanError('Camera access needed — enable it in your browser settings, or type the code instead.');
+      }
+    }, 50);
+  };
+
+  const closeScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.stop();
+      scannerRef.current.destroy();
+      scannerRef.current = null;
+    }
+    setShowScanner(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
+      }
+    };
+  }, []);
 
   const handleConnect = async () => {
     if (enteredCode.some((c) => !c)) return;
@@ -759,6 +829,37 @@ export default function PartnerPairing() {
                     ))}
                   </div>
                 </div>
+                {/* QR code — let him scan instead of typing */}
+                {showQr ? (
+                  <div className="bg-white border-2 border-warm-100 rounded-2xl p-6 mb-4 flex flex-col items-center">
+                    <QRCodeSVG
+                      value={`${window.location.origin}/?invite=${generatedCode}`}
+                      size={200}
+                      level="M"
+                      includeMargin
+                      bgColor="#ffffff"
+                      fgColor="#1f1d1b"
+                    />
+                    <p className="text-xs text-warm-500 text-center mt-3 max-w-[260px]">
+                      Have him scan this with his phone camera — it opens the invite link automatically.
+                    </p>
+                    <button
+                      onClick={() => setShowQr(false)}
+                      className="mt-3 text-xs text-warm-500 hover:text-warm-700 underline"
+                    >
+                      Hide QR
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowQr(true)}
+                    className="w-full py-3 mb-3 bg-warm-100 text-warm-700 rounded-2xl text-sm font-medium hover:bg-warm-200 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    <QrCode size={16} strokeWidth={1.5} />
+                    Show QR code
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     const inviteUrl = `${window.location.origin}/?invite=${generatedCode}`;
@@ -812,7 +913,22 @@ export default function PartnerPairing() {
             <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4">
               <Smartphone size={28} strokeWidth={1.5} className="text-indigo-500" />
             </div>
-            <p className="text-sm text-warm-400 mb-5">Enter the 6-character code from your partner's device.</p>
+            <p className="text-sm text-warm-400 mb-5">Enter the 6-character code from your partner's device, or scan her QR.</p>
+
+            <button
+              onClick={openScanner}
+              className="w-full py-3 mb-4 bg-gradient-to-r from-indigo-500 to-violet-500 text-white rounded-2xl text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200/50 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              <Camera size={16} strokeWidth={1.5} />
+              Scan her QR code
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-1 h-px bg-warm-200" />
+              <span className="text-xs text-warm-400">or type it</span>
+              <div className="flex-1 h-px bg-warm-200" />
+            </div>
+
             <div className="flex items-center justify-center gap-2 mb-6" onPaste={handleCodePaste}>
               {enteredCode.map((char, i) => (
                 <input
@@ -904,6 +1020,40 @@ export default function PartnerPairing() {
           ))}
         </div>
       </div>
+
+      {/* QR Scanner modal */}
+      {showScanner && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={closeScanner}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white rounded-3xl overflow-hidden max-w-md w-full shadow-2xl"
+          >
+            <button
+              onClick={closeScanner}
+              className="absolute top-3 right-3 z-10 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+              aria-label="Close scanner"
+            >
+              <X size={18} strokeWidth={2} />
+            </button>
+            <div className="aspect-square bg-black">
+              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+            </div>
+            <div className="p-5">
+              <p className="text-sm font-medium text-warm-800 text-center">
+                Point your camera at her QR code
+              </p>
+              <p className="text-xs text-warm-400 text-center mt-1">
+                It'll fill in the code automatically.
+              </p>
+              {scanError && (
+                <p className="mt-3 text-xs text-rose-600 bg-rose-50 rounded-xl p-3 text-center">
+                  {scanError}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

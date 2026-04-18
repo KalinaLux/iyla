@@ -5,6 +5,7 @@ import { db } from '../lib/db';
 import type { DailyReading, MucusType, MoodType } from '../lib/types';
 import { SYMPTOM_OPTIONS } from '../lib/types';
 import { assessFertility } from '../lib/fertility-engine';
+import { getCachedBaselines } from '../lib/baselines';
 
 interface Props {
   open: boolean;
@@ -96,10 +97,13 @@ export default function DataEntryModal({ open, onClose, cycleId, cycleDay, date,
         return { peakLhDay: peak.cycleDay, peakLhValue: peak.lh ?? null };
       });
       const priorStatus = yesterday?.fertilityStatus ?? null;
+      // Load cached personalized baselines (populated by the intelligence orchestrator).
+      const baselines = getCachedBaselines();
       const assessment = assessFertility(reading, last7, cycleDay, {
         yesterdayReading: yesterday,
         cycleHistory,
         priorStatus,
+        baselines,
       });
       reading.fertilityStatus = assessment.status;
     } catch {
