@@ -1,8 +1,9 @@
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
-import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence } from '../lib/hooks';
+import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence, useCycles } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
+import { shouldNotifyPartner } from '../lib/signal-concordance';
 import CycleChart from '../components/CycleChart';
 import DataEntryModal from '../components/DataEntryModal';
 import SupplementChecklist from '../components/SupplementChecklist';
@@ -15,6 +16,7 @@ import ScoreRing from '../components/intelligence/ScoreRing';
 import ScoreDrilldownModal from '../components/intelligence/ScoreDrilldownModal';
 import PredictionsCard from '../components/intelligence/PredictionsCard';
 import PatternsCard from '../components/intelligence/PatternsCard';
+import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -120,12 +122,42 @@ export default function Dashboard() {
   const [scoreDrilldownOpen, setScoreDrilldownOpen] = useState(false);
   const intelligence = useIntelligence();
   const cycle = useCurrentCycle();
+  const allCycles = useCycles();
   const readings = useCycleReadings(cycle?.id);
   const selectedReading = useTodayReading(cycle?.id, selectedDate);
   const todayReading = useTodayReading(cycle?.id, todayStr);
   const recentReadings = useRecentReadings(cycle?.id, selectedDate, 7);
   const supplements = useSupplements();
   const supplementLogs = useSupplementLogs(todayStr);
+
+  // ── Concordance context (yesterday, cycle history, prior status) ──
+  const yesterdayReading = (() => {
+    if (!selectedReading) return null;
+    const prior = readings
+      .filter(r => r.date < selectedReading.date)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    return prior[0] ?? null;
+  })();
+  const todayYesterday = (() => {
+    if (!todayReading) return null;
+    const prior = readings
+      .filter(r => r.date < todayReading.date)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    return prior[0] ?? null;
+  })();
+  // Build a compact per-cycle peak-LH history for surge-timing matching.
+  const cycleHistory = (() => {
+    const completed = allCycles.filter(c => c.id !== cycle?.id);
+    return completed.map(c => {
+      const cr = readings.filter(r => r.cycleId === c.id && r.lh != null);
+      if (cr.length === 0) return { peakLhDay: null, peakLhValue: null };
+      let peak = cr[0];
+      for (const r of cr) if ((r.lh ?? 0) > (peak.lh ?? 0)) peak = r;
+      return { peakLhDay: peak.cycleDay, peakLhValue: peak.lh ?? null };
+    });
+  })();
+  const priorStatus: FertilityStatus | null = yesterdayReading?.fertilityStatus ?? null;
+  const todayPriorStatus: FertilityStatus | null = todayYesterday?.fertilityStatus ?? null;
 
   const lastPushedRef = useRef('');
 
@@ -142,19 +174,34 @@ export default function Dashboard() {
   const isViewingToday = selectedDate === todayStr;
 
   const assessment = selectedReading && cycle
-    ? assessFertility(selectedReading, recentReadings, viewingCycleDay)
+    ? assessFertility(selectedReading, recentReadings, viewingCycleDay, {
+        yesterdayReading,
+        cycleHistory,
+        priorStatus,
+      })
     : null;
 
   const todayAssessment = todayReading && cycle
-    ? assessFertility(todayReading, recentReadings, todayCycleDay)
+    ? assessFertility(todayReading, recentReadings, todayCycleDay, {
+        yesterdayReading: todayYesterday,
+        cycleHistory,
+        priorStatus: todayPriorStatus,
+      })
     : null;
 
   const viewStatus: FertilityStatus = assessment?.status ?? (viewingCycleDay <= 5 && viewingCycleDay > 0 ? 'menstrual' : 'low');
   const todayStatus: FertilityStatus = todayAssessment?.status ?? (todayCycleDay <= 5 && todayCycleDay > 0 ? 'menstrual' : 'low');
 
-  // Push TODAY's status to partner (always uses today, not selected date)
+  // Push TODAY's status to partner (always uses today, not selected date).
+  // Concordance-gated: don't push when the combined signal is uncertain —
+  // we never want to send a false "window closed" alarm to a partner.
   useEffect(() => {
     if (!cycle || previewMode || !isSyncEnabled()) return;
+    // If a concordance flag is active, skip the push so we don't trigger a
+    // false partner notification based on a bad reading.
+    if (todayAssessment?.concordanceResult && !shouldNotifyPartner(todayAssessment.concordanceResult)) {
+      return;
+    }
     const key = `${todayStatus}:${todayCycleDay}`;
     if (key === lastPushedRef.current) return;
     lastPushedRef.current = key;
@@ -338,6 +385,11 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Signal Concordance — the CD12 dilute-sample guard */}
+      {!previewMode && assessment?.concordanceResult && (
+        <ConcordanceBanner concordance={assessment.concordanceResult} />
+      )}
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

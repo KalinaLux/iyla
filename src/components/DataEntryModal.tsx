@@ -76,13 +76,31 @@ export default function DataEntryModal({ open, onClose, cycleId, cycleDay, date,
       intercourseNotes: intercourseNotes || undefined,
     };
 
-    // Auto-compute fertilityStatus using recent readings from same cycle
+    // Auto-compute fertilityStatus using recent readings + full concordance
+    // guard so a dilute sample can never mis-tag today's status.
     try {
       const recentReadings = await db.readings
         .where('cycleId').equals(cycleId)
         .and(r => r.date < date)
         .sortBy('date');
-      const assessment = assessFertility(reading, recentReadings.slice(-7), cycleDay);
+      const last7 = recentReadings.slice(-7);
+      const yesterday = recentReadings.length > 0 ? recentReadings[recentReadings.length - 1] : null;
+      // Prior cycles' peak LH days for historical surge matching
+      const allReadings = await db.readings.toArray();
+      const otherCycleIds = Array.from(new Set(allReadings.map(r => r.cycleId))).filter(id => id !== cycleId);
+      const cycleHistory = otherCycleIds.map(id => {
+        const cr = allReadings.filter(r => r.cycleId === id && r.lh != null);
+        if (cr.length === 0) return { peakLhDay: null, peakLhValue: null };
+        let peak = cr[0];
+        for (const r of cr) if ((r.lh ?? 0) > (peak.lh ?? 0)) peak = r;
+        return { peakLhDay: peak.cycleDay, peakLhValue: peak.lh ?? null };
+      });
+      const priorStatus = yesterday?.fertilityStatus ?? null;
+      const assessment = assessFertility(reading, last7, cycleDay, {
+        yesterdayReading: yesterday,
+        cycleHistory,
+        priorStatus,
+      });
       reading.fertilityStatus = assessment.status;
     } catch {
       // If assessment fails, save without it; it can still be computed on read

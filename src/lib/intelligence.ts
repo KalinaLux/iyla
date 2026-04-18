@@ -52,6 +52,11 @@ import {
   type CorrelationLike,
 } from './weekly-digest';
 
+import {
+  assessConcordance,
+  type ConcordanceResult,
+} from './signal-concordance';
+
 // ── Public shape ────────────────────────────────────────────────────────
 
 export interface IntelligenceSnapshot {
@@ -60,6 +65,7 @@ export interface IntelligenceSnapshot {
   correlations: Correlation[];
   predictions: CyclePredictions;
   digest: WeeklyDigest;
+  concordance: ConcordanceResult | null;
   generatedAt: string;
 }
 
@@ -184,6 +190,39 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     today,
   });
 
+  // Signal Concordance — today's reading vs yesterday + cycle history
+  let concordance: ConcordanceResult | null = null;
+  try {
+    const currentCycle = input.cycles.find(c => c.id === input.currentCycleId) ?? null;
+    const todayReading = input.readings.find(r => r.date === today && r.cycleId === input.currentCycleId) ?? null;
+    if (todayReading && currentCycle) {
+      const cycleReadings = input.readings
+        .filter(r => r.cycleId === input.currentCycleId)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const yesterdayReading = cycleReadings
+        .filter(r => r.date < today)
+        .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
+      const recent = cycleReadings.filter(r => r.date <= today).slice(-10);
+      const otherCycleIds = input.cycles.filter(c => c.id !== input.currentCycleId).map(c => c.id!);
+      const cycleHistory = otherCycleIds.map(id => {
+        const cr = input.readings.filter(r => r.cycleId === id && r.lh != null);
+        if (cr.length === 0) return { peakLhDay: null, peakLhValue: null };
+        let peak = cr[0];
+        for (const r of cr) if ((r.lh ?? 0) > (peak.lh ?? 0)) peak = r;
+        return { peakLhDay: peak.cycleDay, peakLhValue: peak.lh ?? null };
+      });
+      concordance = assessConcordance({
+        today: todayReading,
+        yesterday: yesterdayReading,
+        recent,
+        cycleHistory,
+        cycleDay: todayReading.cycleDay,
+      });
+    }
+  } catch (err) {
+    console.error('[iyla intelligence] concordance failed', err);
+  }
+
   // Find last week's score snapshot for digest delta
   const history = getIylaScoreHistory();
   const prevWeekTarget = new Date(today + 'T00:00:00');
@@ -223,10 +262,11 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     correlations,
     predictions,
     digest,
+    concordance,
     generatedAt: new Date().toISOString(),
   };
 }
 
 // Re-export commonly used types for convenience
-export type { IylaScore, DetectedPattern, Correlation, CyclePredictions, WeeklyDigest };
+export type { IylaScore, DetectedPattern, Correlation, CyclePredictions, WeeklyDigest, ConcordanceResult };
 export { getMostRecentDigest, getIylaScoreHistory };

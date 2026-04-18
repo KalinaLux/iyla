@@ -8,6 +8,7 @@ import WeeklyDigestCard from '../components/intelligence/WeeklyDigestCard';
 import CorrelationsCard from '../components/intelligence/CorrelationsCard';
 import PatternsCard from '../components/intelligence/PatternsCard';
 import PredictionsCard from '../components/intelligence/PredictionsCard';
+import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
 import { format } from 'date-fns';
 
 const iconMap = {
@@ -84,6 +85,11 @@ export default function Insights() {
       {/* Weekly Digest — narrative summary at the top */}
       {intelligence && (
         <WeeklyDigestCard digest={intelligence.digest} />
+      )}
+
+      {/* Signal Concordance — today's multi-device outlier detection */}
+      {intelligence?.concordance && (
+        <ConcordanceBanner concordance={intelligence.concordance} hideWhenHealthy={false} />
       )}
 
       {/* Patterns */}

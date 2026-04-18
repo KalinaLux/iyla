@@ -1,4 +1,9 @@
 import type { DailyReading, FertilityStatus, CyclePhase } from './types';
+import {
+  assessConcordance,
+  shouldHoldStatus,
+  type ConcordanceResult,
+} from './signal-concordance';
 
 interface FertilityAssessment {
   status: FertilityStatus;
@@ -7,6 +12,7 @@ interface FertilityAssessment {
   signals: SignalReport[];
   recommendation: string;
   concordance: boolean;
+  concordanceResult?: ConcordanceResult;
 }
 
 interface SignalReport {
@@ -15,10 +21,20 @@ interface SignalReport {
   direction: 'positive' | 'neutral' | 'negative';
 }
 
+export interface AssessFertilityOptions {
+  /** Previous day's reading in the current cycle — used by the concordance engine */
+  yesterdayReading?: DailyReading | null;
+  /** Prior cycles' peak LH day/value — used for historical surge matching */
+  cycleHistory?: Array<{ peakLhDay: number | null; peakLhValue: number | null }>;
+  /** The status computed for the previous day — used to prevent unjustified regressions */
+  priorStatus?: FertilityStatus | null;
+}
+
 export function assessFertility(
   todayReading: DailyReading,
   recentReadings: DailyReading[],
   cycleDay: number,
+  options: AssessFertilityOptions = {},
 ): FertilityAssessment {
   const signals: SignalReport[] = [];
   let fertilityScore = 0;
@@ -228,9 +244,32 @@ export function assessFertility(
     recommendation = 'Early follicular phase. Log your device readings for personalized fertile window detection.';
   }
 
-  const confidence = signalCount >= 3 ? 'high' : signalCount >= 2 ? 'medium' : 'low';
+  let confidence: 'low' | 'medium' | 'high' = signalCount >= 3 ? 'high' : signalCount >= 2 ? 'medium' : 'low';
 
-  return { status, phase, confidence, signals, recommendation, concordance };
+  // ─── Signal Concordance (outlier & dilute-sample guard) ────────────
+  // This runs AFTER the naive assessment and is allowed to hold the status
+  // from regressing when a single bad reading contradicts the majority.
+  const concordanceResult = assessConcordance({
+    today: todayReading,
+    yesterday: options.yesterdayReading ?? null,
+    recent: recentReadings,
+    cycleHistory: options.cycleHistory ?? [],
+    cycleDay,
+  });
+
+  // Downgrade confidence if concordance flags trouble.
+  if (concordanceResult.confidence === 'low') confidence = 'low';
+  else if (concordanceResult.confidence === 'medium' && confidence === 'high') confidence = 'medium';
+
+  // If the concordance engine says "don't regress on this reading alone,"
+  // and we're about to flip from fertile → non-fertile, hold the prior status.
+  if (options.priorStatus && shouldHoldStatus(concordanceResult, status, options.priorStatus)) {
+    status = options.priorStatus;
+    if (status === 'peak' || status === 'high' || status === 'rising') phase = 'ovulatory';
+    recommendation = 'Holding your fertile status — today\'s reading conflicts with your other signals. iyla is protecting you from a false "window closed" flag.';
+  }
+
+  return { status, phase, confidence, signals, recommendation, concordance, concordanceResult };
 }
 
 export function getStatusColor(status: FertilityStatus): string {
