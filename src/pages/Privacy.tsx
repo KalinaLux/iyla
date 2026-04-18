@@ -12,11 +12,13 @@ import {
   Heart,
   Code,
   Stethoscope,
+  BookHeart,
 } from 'lucide-react';
 import { db } from '../lib/db';
 import { breathworkDb } from '../lib/breathwork-rewards';
 import { vaultDb } from '../lib/vault-db';
 import { reconnectDb } from '../lib/reconnect-data';
+import { journalDb } from '../lib/journal-db';
 import { getTerminologyMode, setTerminologyMode, type TerminologyMode } from '../lib/clinical-terminology';
 
 type DeleteTarget =
@@ -24,6 +26,7 @@ type DeleteTarget =
   | 'labs'
   | 'supplements'
   | 'breathwork'
+  | 'journal'
   | 'documents'
   | 'everything';
 
@@ -107,6 +110,26 @@ export default function Privacy() {
     });
   }
 
+  const handleExportJournal = async () => {
+    const entries = await journalDb.entries.toArray();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      kind: 'iyla-journal',
+      version: '1.0',
+      note: 'Private journal export. Not included in the standard data export by design.',
+      entries,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iyla-journal-${format(new Date(), 'yyyy-MM-dd')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportCSV = async () => {
     const cycles = await db.cycles.toArray();
     if (cycles.length === 0) return;
@@ -161,6 +184,9 @@ export default function Privacy() {
           breathworkDb.rewards.clear(),
         ]);
         break;
+      case 'journal':
+        await journalDb.entries.clear();
+        break;
       case 'documents': {
         await Dexie.delete('IylaVaultDB');
         break;
@@ -175,13 +201,18 @@ export default function Privacy() {
           db.supplementLogs.clear(),
           breathworkDb.logs.clear(),
           breathworkDb.rewards.clear(),
+          journalDb.entries.clear(),
         ]);
         try { await Dexie.delete('IylaVaultDB'); } catch { /* ignore */ }
         try { await Dexie.delete('IylaReconnectDB'); } catch { /* ignore */ }
         try { await Dexie.delete('IylaIVFDB'); } catch { /* ignore */ }
         try { await Dexie.delete('IylaLossDB'); } catch { /* ignore */ }
-        // Clear partner pairing + role + theme + onboarding flags
-        ['iyla-user-role', 'iyla-onboarded', 'iyla-signal-theme', 'iyla_pair_code']
+        try { await Dexie.delete('IylaRemindersDB'); } catch { /* ignore */ }
+        try { await Dexie.delete('IylaPregnancyDB'); } catch { /* ignore */ }
+        try { await Dexie.delete('IylaMedicationsDB'); } catch { /* ignore */ }
+        try { localStorage.removeItem('iyla-reminders-lastFired'); } catch { /* ignore */ }
+        // Clear partner pairing + role + theme + onboarding + pregnancy flags
+        ['iyla-user-role', 'iyla-onboarded', 'iyla-signal-theme', 'iyla_pair_code', 'iyla-pregnancy-mode']
           .forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
         break;
     }
@@ -216,6 +247,11 @@ export default function Privacy() {
       target: 'breathwork',
       label: 'Delete breathwork history',
       description: 'Session logs and streak rewards',
+    },
+    {
+      target: 'journal',
+      label: 'Delete journal entries',
+      description: 'All private journal entries (morning, evening, freeform)',
     },
     {
       target: 'documents',
@@ -340,6 +376,11 @@ export default function Privacy() {
           Download a complete copy of everything iyla stores — cycles, readings,
           labs, supplements, breathwork logs, Reconnect sessions, and vault
           documents (with files). Yours to keep.
+          <span className="block mt-2 text-xs text-warm-500 italic">
+            Journal entries are private by design and are <strong>not</strong>{' '}
+            included here. Use the dedicated journal export below if you want a
+            copy.
+          </span>
         </p>
         <div className="flex flex-wrap gap-3 ml-8">
           <button
@@ -353,6 +394,30 @@ export default function Privacy() {
             className="px-5 py-2.5 bg-warm-800 text-white text-sm font-medium rounded-2xl hover:bg-warm-900 transition-colors"
           >
             Export as CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Journal — private, opt-in export */}
+      <div className="bg-white rounded-3xl border border-warm-100 shadow-sm p-6 md:p-8">
+        <div className="flex items-center gap-3 mb-1">
+          <BookHeart size={20} className="text-lavender-600" strokeWidth={1.5} />
+          <h2 className="text-lg font-semibold text-warm-800">
+            Journal (private)
+          </h2>
+        </div>
+        <p className="text-sm text-warm-400 mb-6 ml-8 leading-relaxed">
+          Your journal is held separately from every other export and sync.
+          It's never sent to a partner, never included in provider reports, and
+          never bundled into the standard export. If you want a personal copy,
+          you can opt in here — the file lives only on your device.
+        </p>
+        <div className="flex flex-wrap gap-3 ml-8">
+          <button
+            onClick={handleExportJournal}
+            className="px-5 py-2.5 bg-lavender-500 text-white text-sm font-medium rounded-2xl hover:bg-lavender-600 transition-colors"
+          >
+            Export my journal
           </button>
         </div>
       </div>

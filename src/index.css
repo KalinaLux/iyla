@@ -101,3 +101,32 @@ body {
   background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%);
   pointer-events: none;
 }
+
+@keyframes pulse-slow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 2.5s ease-in-out infinite;
+}
+
+/*
+ * Evening mode — gentle warm filter for bedside BBT logging.
+ * Reduces blue light, softens contrast, preserves readability.
+ * Activated by adding class "evening-mode" to <body>.
+ */
+body.evening-mode {
+  background-color: #1a1510;
+}
+body.evening-mode #root {
+  filter: sepia(0.25) brightness(0.85) contrast(0.95) hue-rotate(-8deg);
+}
+body.evening-mode::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at top, rgba(255, 180, 90, 0.06), transparent 60%);
+  z-index: 9998;
+  mix-blend-mode: screen;
+}

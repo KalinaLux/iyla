@@ -10,7 +10,9 @@ import {
   Menu,
   X,
   Sparkles,
+  Bell,
   Syringe,
+  Stethoscope,
   Wind,
   Moon,
   FileText,
@@ -20,35 +22,67 @@ import {
   Lock,
   Link,
   BookOpen,
+  BookHeart,
   HandHeart,
+  Baby,
+  Trophy,
+  Sunrise,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getPregnancyModeFlag } from '../lib/pregnancy';
+import {
+  isEveningModeActive,
+  toggleEveningMode,
+  getAutoEvening,
+  setAutoEvening,
+} from '../lib/evening-mode';
 
-const navSections: { section: string; items: { to: string; icon: typeof LayoutDashboard; label: string }[] }[] = [
-  {
+type NavSection = { section: string; items: { to: string; icon: typeof LayoutDashboard; label: string }[] };
+
+function buildNavSections(pregnancyActive: boolean): NavSection[] {
+  const sections: NavSection[] = [];
+
+  if (pregnancyActive) {
+    sections.push({
+      section: 'Pregnancy',
+      items: [{ to: '/pregnancy', icon: Baby, label: 'Pregnancy' }],
+    });
+  }
+
+  sections.push({
     section: 'Daily',
     items: [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/tww', icon: Heart, label: 'TWW Companion' },
       { to: '/breathwork', icon: Wind, label: 'Breathwork' },
+      { to: '/journal', icon: BookHeart, label: 'Journal' },
       { to: '/reconnect', icon: HandHeart, label: 'Reconnect' },
     ],
-  },
-  {
+  });
+
+  sections.push({
     section: 'Tracking',
     items: [
       { to: '/cycle', icon: CalendarDays, label: 'Cycle History' },
       { to: '/charts', icon: LineChart, label: 'Charts' },
       { to: '/labs', icon: FlaskConical, label: 'Labs' },
       { to: '/supplements', icon: Pill, label: 'Supplements' },
+      { to: '/medications', icon: Stethoscope, label: 'Medications' },
+      { to: '/reminders', icon: Bell, label: 'Reminders' },
       { to: '/sleep', icon: Moon, label: 'Sleep Analysis' },
     ],
-  },
+  });
+
+  return sections;
+}
+
+const STATIC_ADVANCED_TOOLS: NavSection[] = [
   {
     section: 'Advanced',
     items: [
       { to: '/ivf', icon: Syringe, label: 'IVF Module' },
       { to: '/insights', icon: Brain, label: 'Insights' },
+      { to: '/achievements', icon: Trophy, label: 'Milestones' },
       { to: '/loss-support', icon: Feather, label: 'Loss Support' },
     ],
   },
@@ -67,6 +101,23 @@ const navSections: { section: string; items: { to: string; icon: typeof LayoutDa
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pregnancyActive, setPregnancyActive] = useState<boolean>(() => getPregnancyModeFlag());
+
+  // React to pregnancy-mode toggles (both from this tab and other tabs).
+  useEffect(() => {
+    const sync = () => setPregnancyActive(getPregnancyModeFlag());
+    window.addEventListener('iyla-pregnancy-mode-changed', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('iyla-pregnancy-mode-changed', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  const navSections: NavSection[] = [
+    ...buildNavSections(pregnancyActive),
+    ...STATIC_ADVANCED_TOOLS,
+  ];
 
   return (
     <div className="flex h-screen bg-[#fafafa]">
@@ -112,7 +163,8 @@ export default function Layout() {
             </div>
           ))}
         </nav>
-        <div className="p-4 border-t border-warm-100">
+        <div className="p-4 border-t border-warm-100 space-y-2">
+          <EveningModeToggle />
           <div className="px-4 py-3 bg-warm-50 rounded-2xl">
             <p className="text-xs font-medium text-warm-600">Your data stays here</p>
             <p className="text-[11px] text-warm-400 mt-0.5">Local-first. Private. Only a summary syncs to your partner.</p>
@@ -172,6 +224,9 @@ export default function Layout() {
                 </div>
               ))}
             </nav>
+            <div className="p-3 border-t border-warm-100">
+              <EveningModeToggle />
+            </div>
           </aside>
         </div>
       )}
@@ -182,6 +237,58 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Evening mode toggle — warm filter for bedside use
+// ──────────────────────────────────────────────────────────────────────────
+
+function EveningModeToggle() {
+  const [on, setOn] = useState(isEveningModeActive());
+  const [auto, setAutoState] = useState(getAutoEvening());
+
+  useEffect(() => {
+    const handler = () => setOn(isEveningModeActive());
+    window.addEventListener('iyla-evening-mode-changed', handler);
+    return () => window.removeEventListener('iyla-evening-mode-changed', handler);
+  }, []);
+
+  return (
+    <div className="px-4 py-3 bg-warm-50 rounded-2xl">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {on ? (
+            <Moon size={14} strokeWidth={2} className="text-amber-600" />
+          ) : (
+            <Sunrise size={14} strokeWidth={2} className="text-warm-500" />
+          )}
+          <span className="text-xs font-semibold text-warm-700">Evening mode</span>
+        </div>
+        <button
+          onClick={() => { toggleEveningMode(); setOn(isEveningModeActive()); }}
+          className={`relative w-10 h-5 rounded-full transition-colors ${on ? 'bg-amber-500' : 'bg-warm-200'}`}
+          aria-pressed={on}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+              on ? 'translate-x-5' : ''
+            }`}
+          />
+        </button>
+      </div>
+      <button
+        onClick={() => {
+          const next = !auto;
+          setAutoEvening(next);
+          setAutoState(next);
+        }}
+        className="mt-1.5 text-[10px] text-warm-400 hover:text-warm-600 transition-colors flex items-center gap-1"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${auto ? 'bg-amber-500' : 'bg-warm-300'}`} />
+        {auto ? 'Auto (8pm–6am)' : 'Auto off'}
+      </button>
     </div>
   );
 }

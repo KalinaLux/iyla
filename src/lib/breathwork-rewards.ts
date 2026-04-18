@@ -38,7 +38,7 @@ export const MILESTONES: Milestone[] = [
   { key: 'aquaarian', streakDays: 100, label: 'AquaArian', emoji: '🏛️', description: '100 days — mastery', defaultReward: 'You\'ve earned something legendary' },
 ];
 
-const breathworkDb = new Dexie('IylaBreathworkDB') as Dexie & {
+export const breathworkDb = new Dexie('IylaBreathworkDB') as Dexie & {
   logs: EntityTable<BreathworkLog, 'id'>;
   rewards: EntityTable<BreathworkReward, 'id'>;
 };
@@ -47,8 +47,6 @@ breathworkDb.version(1).stores({
   logs: '++id, date, sessionId, category, isCouples',
   rewards: '++id, milestoneKey',
 });
-
-export { breathworkDb };
 
 export function calculatePoints(durationMin: number, isCouples: boolean, currentStreak: number): number {
   const base = isCouples ? 25 : 10;

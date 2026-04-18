@@ -1,7 +1,8 @@
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil, MessageCircleHeart } from 'lucide-react';
-import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence, useCycles, useCoupleScore } from '../lib/hooks';
+import { Link } from 'react-router-dom';
+import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil, MessageCircleHeart, Baby, ArrowRight } from 'lucide-react';
+import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence, useCycles, useCoupleScore, useAchievements } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
 import { shouldNotifyPartner } from '../lib/signal-concordance';
 import { maybeShowEveningReminder } from '../lib/hydration';
@@ -19,6 +20,8 @@ import PredictionsCard from '../components/intelligence/PredictionsCard';
 import PatternsCard from '../components/intelligence/PatternsCard';
 import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
 import DailyBriefing from '../components/intelligence/DailyBriefing';
+import RemindersDueCard from '../components/intelligence/RemindersDueCard';
+import JournalPromptCard from '../components/intelligence/JournalPromptCard';
 import HydrationTracker from '../components/intelligence/HydrationTracker';
 import CoachModal from '../components/intelligence/CoachModal';
 import CoupleScoreCard from '../components/intelligence/CoupleScoreCard';
@@ -26,6 +29,13 @@ import WeeklyOutlookCard from '../components/intelligence/WeeklyOutlookCard';
 import SymptomPatternsCard from '../components/intelligence/SymptomPatternsCard';
 import CycleRetrospectiveCard from '../components/intelligence/CycleRetrospectiveCard';
 import OcrButton from '../components/OcrButton';
+import PregnancyTransitionModal from '../components/pregnancy/PregnancyTransitionModal';
+import MedicationsDueCard from '../components/intelligence/MedicationsDueCard';
+import AchievementsCard from '../components/intelligence/AchievementsCard';
+import AchievementToast from '../components/AchievementToast';
+import { getPregnancyModeFlag, computePregnancyWeek } from '../lib/pregnancy';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { pregnancyDb } from '../lib/pregnancy-db';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -130,7 +140,28 @@ export default function Dashboard() {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [scoreDrilldownOpen, setScoreDrilldownOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [positiveTestOpen, setPositiveTestOpen] = useState(false);
+  const [pregnancyActive, setPregnancyActive] = useState<boolean>(() => getPregnancyModeFlag());
+
+  useEffect(() => {
+    const sync = () => setPregnancyActive(getPregnancyModeFlag());
+    window.addEventListener('iyla-pregnancy-mode-changed', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('iyla-pregnancy-mode-changed', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  const activePregnancy = useLiveQuery(
+    async () => {
+      if (!pregnancyActive) return undefined;
+      return pregnancyDb.pregnancies.where('status').equals('active').first();
+    },
+    [pregnancyActive],
+  );
   const coupleScore = useCoupleScore();
+  const achievementsData = useAchievements();
   const intelligence = useIntelligence();
   const cycle = useCurrentCycle();
   const allCycles = useCycles();
@@ -243,6 +274,48 @@ export default function Dashboard() {
     return null;
   }
 
+  // Pregnancy-mode short-circuit: hide fertility-tracking hero and show the
+  // "you're in pregnancy mode" bridge instead. The full experience lives at /pregnancy.
+  if (pregnancyActive && activePregnancy) {
+    const { week, trimester } = computePregnancyWeek(activePregnancy.lmpDate, new Date());
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-warm-800">{getGreeting()}</h1>
+          <p className="text-warm-400 text-sm mt-1">{format(new Date(), 'EEEE, MMMM d')}</p>
+        </div>
+
+        <Link
+          to="/pregnancy"
+          className="block relative overflow-hidden rounded-3xl bg-gradient-to-br from-lavender-100 via-rose-50 to-honey-50 p-7 shadow-sm border border-white/60 hover:shadow-md transition-all"
+        >
+          <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/40 blur-3xl pointer-events-none" />
+          <div className="relative z-10 flex items-center gap-5">
+            <div className="w-14 h-14 rounded-2xl bg-white/70 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <Baby size={24} className="text-lavender-600" strokeWidth={1.5} />
+            </div>
+            <div className="flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-warm-500 mb-1">
+                You're in pregnancy mode
+              </p>
+              <h2 className="text-xl font-semibold text-warm-800">
+                Week {week} · Trimester {trimester}
+              </h2>
+              <p className="text-sm text-warm-600 mt-1">
+                Fertile-window tracking is paused. Open pregnancy view for this week's milestone, symptom log, and appointments.
+              </p>
+            </div>
+            <ArrowRight size={18} className="text-warm-500 shrink-0" />
+          </div>
+        </Link>
+
+        {!previewMode && <RemindersDueCard />}
+        <MedicationsDueCard />
+        <JournalPromptCard cyclePhase="luteal" cycleDay={0} />
+      </div>
+    );
+  }
+
   if (!cycle) {
     return <StartCyclePrompt />;
   }
@@ -265,6 +338,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Floating celebration toast for newly-earned milestones */}
+      <AchievementToast newlyEarned={achievementsData.newlyEarned} />
+
       {/* Sync Status Banner */}
       {isSyncEnabled() && getPairCode() && (
         <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 rounded-xl border border-emerald-200">
@@ -363,6 +439,20 @@ export default function Dashboard() {
               document.querySelector('[data-section="patterns"]')?.scrollIntoView({ behavior: 'smooth' });
             }
           }}
+        />
+      )}
+
+      {/* Reminders due today — compact card; returns null when empty */}
+      {!previewMode && isViewingToday && <RemindersDueCard />}
+
+      {/* Medications due today — compact card; returns null when empty */}
+      {!previewMode && isViewingToday && <MedicationsDueCard />}
+
+      {/* Private journal nudge — shows today's unanswered morning/evening prompt */}
+      {!previewMode && isViewingToday && (
+        <JournalPromptCard
+          cyclePhase={todayAssessment?.phase ?? (todayCycleDay <= 5 ? 'menstrual' : todayCycleDay <= 13 ? 'follicular' : todayCycleDay <= 16 ? 'ovulatory' : 'luteal')}
+          cycleDay={todayCycleDay}
         />
       )}
 
@@ -498,6 +588,11 @@ export default function Dashboard() {
         <CoupleScoreCard score={coupleScore} />
       )}
 
+      {/* Milestones earned along the way */}
+      {!previewMode && achievementsData.all.length > 0 && (
+        <AchievementsCard achievements={achievementsData.all} />
+      )}
+
       {/* Predictions */}
       {intelligence && !previewMode && (
         <div data-section="predictions">
@@ -555,6 +650,36 @@ export default function Dashboard() {
           date={todayStr}
         />
       </div>
+
+      {/* Gentle TTC milestone transition — "Log a positive test" */}
+      {!previewMode && !pregnancyActive && (
+        <div className="bg-white rounded-3xl border border-warm-100 shadow-sm p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-lavender-50 flex items-center justify-center shrink-0">
+            <Baby size={17} className="text-lavender-600" strokeWidth={1.5} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-warm-800">Two lines?</p>
+            <p className="text-xs text-warm-500 mt-0.5">
+              If you got a positive test, iyla will transition into pregnancy mode with you.
+            </p>
+          </div>
+          <button
+            onClick={() => setPositiveTestOpen(true)}
+            className="text-xs font-semibold text-lavender-700 bg-lavender-50 hover:bg-lavender-100 px-4 py-2 rounded-2xl transition-all shrink-0"
+          >
+            Log positive test
+          </button>
+        </div>
+      )}
+
+      <PregnancyTransitionModal
+        open={positiveTestOpen}
+        onClose={() => setPositiveTestOpen(false)}
+        onComplete={() => {
+          setPositiveTestOpen(false);
+          window.location.href = '/pregnancy';
+        }}
+      />
 
       {/* Data Entry Modal */}
       <DataEntryModal

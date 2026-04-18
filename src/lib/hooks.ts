@@ -12,6 +12,12 @@ import {
 import { maleDb, type SemenAnalysis, type MaleDailyLog } from './male-factor-db';
 import { computeDadScore, type DadScore } from './dad-score';
 import { computeCoupleScore, type CoupleScore } from './couple-score';
+import { computeAchievements, unclaimedEarned, type Achievement } from './achievements';
+import { calculateStreak as calculateBreathworkStreak } from './breathwork-rewards';
+import { computeJournalStreak } from './journal-search';
+import { breathworkDb } from './breathwork-rewards';
+import { journalDb } from './journal-db';
+import { reconnectDb } from './reconnect-data';
 
 export function useCurrentCycle(): Cycle | undefined {
   return useLiveQuery(() =>
@@ -157,6 +163,46 @@ export function useDadScore(): DadScore | null {
       return null;
     }
   }, [semenAnalyses, dailyLogs, today]);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Achievements hook — computes milestones from the user's local data
+// ──────────────────────────────────────────────────────────────────────────
+
+export function useAchievements(): { all: Achievement[]; newlyEarned: Achievement[] } {
+  const cycles = useCycles();
+  const intelligence = useIntelligence();
+  const dadScore = useDadScore();
+
+  const readings = useLiveQuery(() => db.readings.toArray(), []) ?? [];
+
+  const breathworkLogs = useLiveQuery(() => breathworkDb.logs.toArray(), []) ?? [];
+  const breathworkStreak = useMemo(() => calculateBreathworkStreak(breathworkLogs), [breathworkLogs]);
+
+  const journalEntries = useLiveQuery(() => journalDb.entries.toArray(), []) ?? [];
+  const journalStreak = useMemo(() => computeJournalStreak(journalEntries), [journalEntries]);
+
+  const reconnectCount = useLiveQuery(() => reconnectDb.sessions.count(), []) ?? 0;
+
+  const pairedSince = useMemo(() => {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem('iyla_pair_code') ? 'connected' : null;
+  }, []);
+
+  return useMemo(() => {
+    const all = computeAchievements({
+      cycles,
+      readings,
+      baselines: intelligence?.baselines ?? null,
+      dadScore,
+      breathworkStreak,
+      journalStreak,
+      reconnectSessionCount: reconnectCount,
+      pairedSince,
+    });
+    const newlyEarned = unclaimedEarned(all);
+    return { all, newlyEarned };
+  }, [cycles, readings, intelligence, dadScore, breathworkStreak, journalStreak, reconnectCount, pairedSince]);
 }
 
 export function useCoupleScore(): CoupleScore | null {
