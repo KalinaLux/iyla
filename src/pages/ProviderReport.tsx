@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { format, subMonths, differenceInDays } from 'date-fns';
-import { Printer, FileText, Sparkles, Check, Calendar, User } from 'lucide-react';
+import { Printer, FileText, Sparkles, Check, Calendar, User, Download } from 'lucide-react';
 import type { Cycle, DailyReading, LabResult } from '../lib/types';
+import { generateProviderPdf, providerPdfFilename } from '../lib/provider-pdf';
 
 type DateRangeOption = '1cycle' | '3cycles' | '6months' | 'custom';
 
@@ -141,6 +142,46 @@ export default function ProviderReport() {
     window.print();
   }
 
+  function handleDownloadPdf() {
+    const ongoing = allCycles.find(c => c.outcome === 'ongoing') ?? null;
+    let currentCycleDay: number | null = null;
+    if (ongoing) {
+      const start = new Date(ongoing.startDate + 'T00:00:00').getTime();
+      const today = new Date().getTime();
+      currentCycleDay = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    const completed = allCycles.filter(c => c.outcome !== 'ongoing');
+    const lengths = completed
+      .map(c => (c.endDate ? (differenceInDays(new Date(c.endDate + 'T00:00:00'), new Date(c.startDate + 'T00:00:00')) + 1) : null))
+      .filter((n): n is number => n != null);
+    const avg = lengths.length > 0 ? lengths.reduce((a, b) => a + b, 0) / lengths.length : null;
+    const lutealLens = completed.map(c => c.lutealPhaseDays).filter((n): n is number => n != null);
+    const avgLuteal = lutealLens.length > 0 ? lutealLens.reduce((a, b) => a + b, 0) / lutealLens.length : null;
+    const follicularLens = completed.map(c => c.follicularPhaseDays).filter((n): n is number => n != null);
+    const avgFollicular = follicularLens.length > 0 ? follicularLens.reduce((a, b) => a + b, 0) / follicularLens.length : null;
+
+    const name = 'Patient'; // iyla-local; no real PII stored centrally
+    generateProviderPdf({
+      userName: name,
+      generatedOn: format(new Date(), 'yyyy-MM-dd'),
+      cycles: filteredCycles,
+      readings: allReadings,
+      labs: allLabs,
+      supplements: activeSupplements,
+      summary: {
+        currentCycleDay,
+        currentCycleStart: ongoing?.startDate ?? null,
+        avgCycleLength: avg,
+        avgLutealPhase: avgLuteal,
+        avgFollicularPhase: avgFollicular,
+        totalCyclesTracked: allCycles.length,
+      },
+    });
+    // Trigger filename prompt (best-effort — jsPDF already sets the filename)
+    providerPdfFilename(name);
+  }
+
   function getCycleLength(cycle: Cycle): number {
     const start = new Date(cycle.startDate + 'T00:00:00');
     const end = cycle.endDate ? new Date(cycle.endDate + 'T00:00:00') : new Date();
@@ -269,13 +310,22 @@ export default function ProviderReport() {
               </p>
             </div>
             {showPreview && (
-              <button
-                onClick={handlePrint}
-                className="flex items-center gap-2 bg-warm-800 text-white px-5 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-900 transition-all shadow-sm"
-              >
-                <Printer size={16} strokeWidth={1.5} />
-                Print Report
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadPdf}
+                  className="flex items-center gap-2 bg-warm-100 text-warm-700 px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-200 transition-all"
+                >
+                  <Download size={16} strokeWidth={1.5} />
+                  Download PDF
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="flex items-center gap-2 bg-warm-800 text-white px-5 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-900 transition-all shadow-sm"
+                >
+                  <Printer size={16} strokeWidth={1.5} />
+                  Print
+                </button>
+              </div>
             )}
           </div>
         </div>

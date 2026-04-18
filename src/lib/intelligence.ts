@@ -57,6 +57,17 @@ import {
   type ConcordanceResult,
 } from './signal-concordance';
 
+import {
+  computeBaselines,
+  saveBaselines,
+  type PersonalBaselines,
+} from './baselines';
+
+import {
+  buildDailyBriefing,
+  type DailyBriefing,
+} from './daily-briefing';
+
 // ── Public shape ────────────────────────────────────────────────────────
 
 export interface IntelligenceSnapshot {
@@ -66,6 +77,8 @@ export interface IntelligenceSnapshot {
   predictions: CyclePredictions;
   digest: WeeklyDigest;
   concordance: ConcordanceResult | null;
+  baselines: PersonalBaselines;
+  briefing: DailyBriefing;
   generatedAt: string;
 }
 
@@ -256,6 +269,35 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
   });
   try { saveWeeklyDigest(digest); } catch { /* ignore */ }
 
+  // Personalized baselines
+  const baselines = computeBaselines({ cycles: input.cycles, readings: input.readings });
+  try { saveBaselines(baselines); } catch { /* ignore */ }
+
+  // Daily briefing — the "one thing that matters today" card
+  const currentCycle = input.cycles.find(c => c.id === input.currentCycleId) ?? null;
+  const todayReading = input.readings.find(r => r.date === today && r.cycleId === input.currentCycleId) ?? null;
+  const cycleReadings = input.readings.filter(r => r.cycleId === input.currentCycleId).sort((a, b) => a.date.localeCompare(b.date));
+  const yesterdayReading = cycleReadings.filter(r => r.date < today).sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
+  const cycleDay = todayReading?.cycleDay ?? (currentCycle ? (() => {
+    const a = new Date(currentCycle.startDate + 'T00:00:00').getTime();
+    const b = new Date(today + 'T00:00:00').getTime();
+    return Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1;
+  })() : null);
+
+  const briefing = buildDailyBriefing({
+    today,
+    intelligence: {
+      score, patterns, correlations, predictions, digest, concordance,
+      baselines, briefing: null as unknown as DailyBriefing, // temporary — won't be read by briefing
+      generatedAt: new Date().toISOString(),
+    },
+    baselines,
+    currentCycle,
+    todayReading,
+    yesterdayReading,
+    cycleDay,
+  });
+
   return {
     score,
     patterns,
@@ -263,10 +305,12 @@ export function buildIntelligenceSnapshot(input: IntelligenceInput): Intelligenc
     predictions,
     digest,
     concordance,
+    baselines,
+    briefing,
     generatedAt: new Date().toISOString(),
   };
 }
 
 // Re-export commonly used types for convenience
-export type { IylaScore, DetectedPattern, Correlation, CyclePredictions, WeeklyDigest, ConcordanceResult };
+export type { IylaScore, DetectedPattern, Correlation, CyclePredictions, WeeklyDigest, ConcordanceResult, PersonalBaselines, DailyBriefing };
 export { getMostRecentDigest, getIylaScoreHistory };

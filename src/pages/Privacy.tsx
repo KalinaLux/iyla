@@ -11,11 +11,13 @@ import {
   AlertTriangle,
   Heart,
   Code,
+  Stethoscope,
 } from 'lucide-react';
 import { db } from '../lib/db';
 import { breathworkDb } from '../lib/breathwork-rewards';
 import { vaultDb } from '../lib/vault-db';
 import { reconnectDb } from '../lib/reconnect-data';
+import { getTerminologyMode, setTerminologyMode, type TerminologyMode } from '../lib/clinical-terminology';
 
 type DeleteTarget =
   | 'cycles'
@@ -28,6 +30,7 @@ type DeleteTarget =
 export default function Privacy() {
   const [confirmTarget, setConfirmTarget] = useState<DeleteTarget | null>(null);
   const [deletedTargets, setDeletedTargets] = useState<Set<DeleteTarget>>(new Set());
+  const [termMode, setTermMode] = useState<TerminologyMode>(getTerminologyMode());
 
   const handleExportJSON = async () => {
     const [cycles, readings, labs, supplements, protocols, supplementLogs] =
@@ -281,6 +284,48 @@ export default function Privacy() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Terminology Mode */}
+      <div className="bg-white rounded-3xl border border-warm-100 shadow-sm p-6 md:p-8">
+        <div className="flex items-center gap-3 mb-1">
+          <Stethoscope size={20} className="text-warm-600" strokeWidth={1.5} />
+          <h2 className="text-lg font-semibold text-warm-800">
+            Language Mode
+          </h2>
+        </div>
+        <p className="text-sm text-warm-400 mb-6 ml-8 leading-relaxed">
+          iyla speaks to you in warm, human language by default. Switch to clinical mode
+          to see the medical terminology a reproductive endocrinologist would use — useful
+          when preparing for an appointment or sharing your screen with a provider.
+        </p>
+        <div className="flex gap-2 ml-8">
+          <button
+            onClick={() => { setTermMode('warm'); setTerminologyMode('warm'); }}
+            className={`flex-1 max-w-[200px] px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
+              termMode === 'warm'
+                ? 'bg-warm-800 text-white shadow-sm'
+                : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
+            }`}
+          >
+            Warm voice
+          </button>
+          <button
+            onClick={() => { setTermMode('clinical'); setTerminologyMode('clinical'); }}
+            className={`flex-1 max-w-[200px] px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${
+              termMode === 'clinical'
+                ? 'bg-warm-800 text-white shadow-sm'
+                : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
+            }`}
+          >
+            Clinical terminology
+          </button>
+        </div>
+        {termMode === 'clinical' && (
+          <div className="mt-4 ml-8 px-4 py-3 bg-teal-50 rounded-2xl text-xs text-teal-700 leading-relaxed">
+            Clinical mode is active. Fertility status and phase labels will now use reproductive-endocrinology terminology.
+          </div>
+        )}
       </div>
 
       {/* Export */}

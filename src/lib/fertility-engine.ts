@@ -308,23 +308,29 @@ export function getStatusGlow(status: FertilityStatus): string {
   }
 }
 
+import { translate } from './clinical-terminology';
+
 export function getStatusLabel(status: FertilityStatus): string {
+  let warm: string;
   switch (status) {
-    case 'peak': return 'Peak Fertility';
-    case 'high': return 'High Fertility';
-    case 'rising': return 'Rising';
-    case 'confirmed_ovulation': return 'Ovulation Confirmed';
-    case 'luteal': return 'Luteal Phase';
-    case 'menstrual': return 'Menstrual';
-    case 'low': return 'Low Fertility';
+    case 'peak': warm = 'Peak Fertility'; break;
+    case 'high': warm = 'High Fertility'; break;
+    case 'rising': warm = 'Rising'; break;
+    case 'confirmed_ovulation': warm = 'Ovulation Confirmed'; break;
+    case 'luteal': warm = 'Luteal Phase'; break;
+    case 'menstrual': warm = 'Menstrual'; break;
+    case 'low': warm = 'Low Fertility'; break;
   }
+  return translate(warm);
 }
 
 export function getPhaseLabel(phase: CyclePhase): string {
+  let warm: string;
   switch (phase) {
-    case 'menstrual': return 'Menstrual Phase';
-    case 'follicular': return 'Follicular Phase';
-    case 'ovulatory': return 'Ovulatory Phase';
-    case 'luteal': return 'Luteal Phase';
+    case 'menstrual': warm = 'Menstrual Phase'; break;
+    case 'follicular': warm = 'Follicular Phase'; break;
+    case 'ovulatory': warm = 'Ovulatory Phase'; break;
+    case 'luteal': warm = 'Luteal Phase'; break;
   }
+  return translate(warm);
 }

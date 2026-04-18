@@ -9,6 +9,7 @@ import CorrelationsCard from '../components/intelligence/CorrelationsCard';
 import PatternsCard from '../components/intelligence/PatternsCard';
 import PredictionsCard from '../components/intelligence/PredictionsCard';
 import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
+import CycleOverlayCard from '../components/intelligence/CycleOverlayCard';
 import { format } from 'date-fns';
 
 const iconMap = {
@@ -67,6 +68,7 @@ export default function Insights() {
   const insights = generateCycleInsights(cycles, allReadingsByCycle, supplementLogs);
   const intelligence = useIntelligence();
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const readings = allReadingsByCycle.flat();
 
   return (
     <div className="space-y-7">
@@ -107,6 +109,37 @@ export default function Insights() {
         <CorrelationsCard correlations={intelligence.correlations} />
       )}
 
+      {/* Cycle overlay — compare this cycle to history */}
+      <CycleOverlayCard cycles={cycles} readings={readings} />
+
+      {/* Personalized baselines summary */}
+      {intelligence?.baselines && intelligence.baselines.sampleSize > 0 && (
+        <div className="bg-white rounded-3xl border border-warm-100 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-warm-700 mb-4">Your personalized baselines</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+            <BaselineStat label="Avg cycle length" value={intelligence.baselines.cycleLength.mean > 0 ? `${intelligence.baselines.cycleLength.mean.toFixed(1)} days` : '—'} />
+            <BaselineStat label="Avg luteal phase" value={intelligence.baselines.lutealPhase.meanDays > 0 ? `${intelligence.baselines.lutealPhase.meanDays.toFixed(1)} days` : '—'} />
+            <BaselineStat label="Typical ovulation" value={intelligence.baselines.ovulation.typicalCycleDay ? `CD${intelligence.baselines.ovulation.typicalCycleDay}` : '—'} />
+            <BaselineStat label="Your LH peak" value={intelligence.baselines.lhSurge.typicalPeakValue ? `${intelligence.baselines.lhSurge.typicalPeakValue.toFixed(1)} mIU/mL` : '—'} />
+            <BaselineStat label="BBT baseline" value={intelligence.baselines.bbt.follicularBaseline ? `${intelligence.baselines.bbt.follicularBaseline.toFixed(2)}°F` : '—'} />
+            <BaselineStat label="Kegg dry peak" value={intelligence.baselines.kegg.peakImpedance ? `${intelligence.baselines.kegg.peakImpedance.toFixed(0)}` : '—'} />
+          </div>
+          {intelligence.baselines.adaptiveRules.notes.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-warm-100 space-y-2">
+              {intelligence.baselines.adaptiveRules.notes.slice(0, 3).map((note, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-warm-600 leading-relaxed">
+                  <span className="mt-1.5 w-1 h-1 rounded-full bg-warm-400 shrink-0" />
+                  <span>{note}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 text-[10px] uppercase tracking-wider text-warm-400 font-medium">
+            Built from {intelligence.baselines.sampleSize} completed cycle{intelligence.baselines.sampleSize === 1 ? '' : 's'}
+          </div>
+        </div>
+      )}
+
       {/* Legacy cycle-intelligence insights (still useful) */}
       {insights.length > 0 && (
         <div>
@@ -133,6 +166,15 @@ export default function Insights() {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BaselineStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-warm-50 rounded-2xl p-3.5">
+      <div className="text-[10px] uppercase tracking-wider text-warm-400 font-semibold mb-1">{label}</div>
+      <div className="text-lg font-bold text-warm-800 tabular-nums">{value}</div>
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
-import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence, useCycles } from '../lib/hooks';
+import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil, MessageCircleHeart } from 'lucide-react';
+import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence, useCycles, useCoupleScore } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
 import { shouldNotifyPartner } from '../lib/signal-concordance';
+import { maybeShowEveningReminder } from '../lib/hydration';
 import CycleChart from '../components/CycleChart';
 import DataEntryModal from '../components/DataEntryModal';
 import SupplementChecklist from '../components/SupplementChecklist';
@@ -17,6 +18,10 @@ import ScoreDrilldownModal from '../components/intelligence/ScoreDrilldownModal'
 import PredictionsCard from '../components/intelligence/PredictionsCard';
 import PatternsCard from '../components/intelligence/PatternsCard';
 import ConcordanceBanner from '../components/intelligence/ConcordanceBanner';
+import DailyBriefing from '../components/intelligence/DailyBriefing';
+import HydrationTracker from '../components/intelligence/HydrationTracker';
+import CoachModal from '../components/intelligence/CoachModal';
+import CoupleScoreCard from '../components/intelligence/CoupleScoreCard';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -120,6 +125,8 @@ export default function Dashboard() {
   const [previewMode, setPreviewMode] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [scoreDrilldownOpen, setScoreDrilldownOpen] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const coupleScore = useCoupleScore();
   const intelligence = useIntelligence();
   const cycle = useCurrentCycle();
   const allCycles = useCycles();
@@ -215,6 +222,15 @@ export default function Dashboard() {
       recommendation,
     });
   }, [cycle, todayStatus, todayCycleDay, previewMode, todayAssessment]);
+
+  // Evening hydration reminder (7–10pm, only on fertile-window days)
+  useEffect(() => {
+    if (!intelligence) return;
+    const fertileStart = intelligence.predictions.fertilePhaseStart;
+    const fertileEnd = intelligence.predictions.fertilePhaseEnd;
+    const inFertileWindow = !!(fertileStart && fertileEnd && todayStr >= fertileStart && todayStr <= fertileEnd);
+    maybeShowEveningReminder(inFertileWindow);
+  }, [intelligence, todayStr]);
 
   if (getUserRole() === 'partner' && isOnboarded()) {
     window.location.href = '/partner';
@@ -321,6 +337,29 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Smart Daily Briefing — iyla's one thing that matters today */}
+      {intelligence && !previewMode && isViewingToday && (
+        <DailyBriefing
+          briefing={intelligence.briefing}
+          onAction={(action) => {
+            if (action.target) {
+              window.location.href = action.target;
+              return;
+            }
+            const label = action.label.toLowerCase();
+            if (label.includes('log') || label.includes('retest') || label.includes('edit')) {
+              setEntryModalOpen(true);
+            } else if (label.includes('concordance')) {
+              document.querySelector('[data-section="concordance"]')?.scrollIntoView({ behavior: 'smooth' });
+            } else if (label.includes('see prediction')) {
+              document.querySelector('[data-section="predictions"]')?.scrollIntoView({ behavior: 'smooth' });
+            } else if (label.includes('all patterns') || label.includes('pattern')) {
+              document.querySelector('[data-section="patterns"]')?.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+        />
+      )}
+
       {/* --- HERO STATUS CARD --- */}
       <div
         key={status}
@@ -388,7 +427,22 @@ export default function Dashboard() {
 
       {/* Signal Concordance — the CD12 dilute-sample guard */}
       {!previewMode && assessment?.concordanceResult && (
-        <ConcordanceBanner concordance={assessment.concordanceResult} />
+        <div data-section="concordance">
+          <ConcordanceBanner concordance={assessment.concordanceResult} />
+        </div>
+      )}
+
+      {/* Hydration tracker — directly addresses dilute-sample artifacts */}
+      {!previewMode && isViewingToday && (
+        <HydrationTracker
+          date={todayStr}
+          inFertileWindow={!!(
+            intelligence?.predictions.fertilePhaseStart &&
+            intelligence?.predictions.fertilePhaseEnd &&
+            todayStr >= intelligence.predictions.fertilePhaseStart &&
+            todayStr <= intelligence.predictions.fertilePhaseEnd
+          )}
+        />
       )}
 
       {/* Quick Stats Row */}
@@ -424,9 +478,16 @@ export default function Dashboard() {
         <ScoreRing score={intelligence.score} onClick={() => setScoreDrilldownOpen(true)} />
       )}
 
+      {/* Couple Score — the "you two, together" metric */}
+      {coupleScore && !previewMode && (
+        <CoupleScoreCard score={coupleScore} />
+      )}
+
       {/* Predictions */}
       {intelligence && !previewMode && (
-        <PredictionsCard predictions={intelligence.predictions} today={todayStr} />
+        <div data-section="predictions">
+          <PredictionsCard predictions={intelligence.predictions} today={todayStr} />
+        </div>
       )}
 
       {/* Cycle Chart */}
@@ -443,7 +504,9 @@ export default function Dashboard() {
 
       {/* Pattern detection */}
       {intelligence && !previewMode && intelligence.patterns.length > 0 && (
-        <PatternsCard patterns={intelligence.patterns} limit={4} />
+        <div data-section="patterns">
+          <PatternsCard patterns={intelligence.patterns} limit={4} />
+        </div>
       )}
 
       {/* Supplement Checklist */}
@@ -474,6 +537,33 @@ export default function Dashboard() {
           onClose={() => setScoreDrilldownOpen(false)}
           score={intelligence.score}
         />
+      )}
+
+      {/* iyla Coach — grounded Q&A floating button */}
+      {!previewMode && (
+        <>
+          <button
+            onClick={() => setCoachOpen(true)}
+            className="fixed bottom-6 right-6 z-30 group flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all active:scale-[0.97]"
+            title="Ask iyla"
+          >
+            <MessageCircleHeart size={16} strokeWidth={2} />
+            <span className="text-sm font-semibold">Ask iyla</span>
+          </button>
+          <CoachModal
+            open={coachOpen}
+            onClose={() => setCoachOpen(false)}
+            context={{
+              today: todayStr,
+              cycleDay: todayCycleDay,
+              currentCycle: cycle,
+              todayReading: todayReading ?? null,
+              yesterdayReading: todayYesterday,
+              intelligence,
+              baselines: intelligence?.baselines ?? null,
+            }}
+          />
+        </>
       )}
     </div>
   );

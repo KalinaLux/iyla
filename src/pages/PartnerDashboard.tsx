@@ -18,7 +18,12 @@ import {
 } from 'lucide-react';
 import { getSelectedTheme, getThemeById, setSelectedTheme, mapStatusToTier, SIGNAL_THEMES } from '../lib/signal-themes';
 import { pullStatus, subscribeToStatus, isSyncEnabled, type PartnerStatus } from '../lib/sync';
-import { useSupplements } from '../lib/hooks';
+import { useSupplements, useDadScore, useCoupleScore, useSemenAnalyses, useMaleDailyLogs } from '../lib/hooks';
+import DadScoreRing from '../components/intelligence/DadScoreRing';
+import DadScoreDrilldown from '../components/intelligence/DadScoreDrilldown';
+import MaleFactorCard from '../components/intelligence/MaleFactorCard';
+import CoupleScoreCard from '../components/intelligence/CoupleScoreCard';
+import MaleFactorEntryModal from '../components/MaleFactorEntryModal';
 
 type CycleStatus = 'low' | 'rising' | 'high' | 'peak' | 'confirmed_ovulation' | 'luteal' | 'menstrual';
 type CyclePhase = 'follicular' | 'ovulatory' | 'luteal' | 'menstrual';
@@ -171,6 +176,14 @@ function scoreLabel(score: number): string {
   return 'Needs work';
 }
 
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function PartnerDashboard() {
   const [cycleStatus, setCycleStatus] = useState<CycleStatus>('high');
   const [cycleDay, setCycleDay] = useState<number | null>(null);
@@ -196,6 +209,16 @@ export default function PartnerDashboard() {
   const [alcoholFreeDays, setAlcoholFreeDays] = useState(4);
   const [exerciseSessions, setExerciseSessions] = useState(3);
   const [expandedEdu, setExpandedEdu] = useState<number | null>(null);
+
+  // Dad factor intelligence
+  const dadScore = useDadScore();
+  const coupleScore = useCoupleScore();
+  const semenAnalyses = useSemenAnalyses();
+  const dailyLogs = useMaleDailyLogs(60);
+  const [dadDrilldownOpen, setDadDrilldownOpen] = useState(false);
+  const [entryModalOpen, setEntryModalOpen] = useState(false);
+  const today = todayIso();
+  const todayDailyLog = dailyLogs.find(l => l.date === today) ?? null;
 
   const [themeId, setThemeId] = useState(() => getSelectedTheme());
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -617,6 +640,39 @@ export default function PartnerDashboard() {
         </div>
       </div>
 
+      {/* NEW: Dad Score + Log button */}
+      <div className="bg-white rounded-3xl border border-warm-100 shadow-sm overflow-hidden">
+        <div className="px-6 pt-5 pb-4 border-b border-warm-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-warm-800">Your Dad Score</h2>
+          <button
+            onClick={() => setEntryModalOpen(true)}
+            className="px-3 py-1.5 bg-warm-800 text-white rounded-xl text-xs font-semibold hover:bg-warm-900 transition-all active:scale-[0.97]"
+          >
+            {todayDailyLog ? 'Update today' : 'Log today'}
+          </button>
+        </div>
+        <div className="p-5">
+          {dadScore ? (
+            <DadScoreRing score={dadScore} onClick={() => setDadDrilldownOpen(true)} />
+          ) : (
+            <div className="text-sm text-warm-500 text-center py-8">
+              Log a day to start building your Dad Score.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* NEW: Male factor (semen analysis trends) */}
+      <MaleFactorCard
+        analyses={semenAnalyses}
+        onAddClick={() => setEntryModalOpen(true)}
+      />
+
+      {/* NEW: Couple score */}
+      {coupleScore && (
+        <CoupleScoreCard score={coupleScore} />
+      )}
+
       {/* 6. Timeline */}
       <div className="bg-white rounded-3xl border border-warm-100 shadow-sm overflow-hidden">
         <div className="px-6 pt-5 pb-4 border-b border-warm-100 flex items-center gap-2">
@@ -674,6 +730,23 @@ export default function PartnerDashboard() {
           ))}
         </div>
       </div>
+
+      {/* Dad drilldown */}
+      {dadScore && (
+        <DadScoreDrilldown
+          open={dadDrilldownOpen}
+          onClose={() => setDadDrilldownOpen(false)}
+          score={dadScore}
+        />
+      )}
+
+      {/* Entry modal for daily log / semen analysis */}
+      <MaleFactorEntryModal
+        open={entryModalOpen}
+        onClose={() => setEntryModalOpen(false)}
+        date={today}
+        existingDailyLog={todayDailyLog}
+      />
     </div>
   );
 }
