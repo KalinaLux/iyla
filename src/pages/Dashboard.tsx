@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
-import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs } from '../lib/hooks';
+import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs, useIntelligence } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
 import CycleChart from '../components/CycleChart';
 import DataEntryModal from '../components/DataEntryModal';
@@ -11,6 +11,10 @@ import { getUserRole, isOnboarded } from '../components/StartCyclePrompt';
 import WeekStrip from '../components/WeekStrip';
 import type { FertilityStatus, CyclePhase } from '../lib/types';
 import { pushStatus, isSyncEnabled, getPairCode } from '../lib/sync';
+import ScoreRing from '../components/intelligence/ScoreRing';
+import ScoreDrilldownModal from '../components/intelligence/ScoreDrilldownModal';
+import PredictionsCard from '../components/intelligence/PredictionsCard';
+import PatternsCard from '../components/intelligence/PatternsCard';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -113,6 +117,8 @@ export default function Dashboard() {
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [scoreDrilldownOpen, setScoreDrilldownOpen] = useState(false);
+  const intelligence = useIntelligence();
   const cycle = useCurrentCycle();
   const readings = useCycleReadings(cycle?.id);
   const selectedReading = useTodayReading(cycle?.id, selectedDate);
@@ -361,6 +367,16 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* iyla Score — the flagship unified metric */}
+      {intelligence && !previewMode && (
+        <ScoreRing score={intelligence.score} onClick={() => setScoreDrilldownOpen(true)} />
+      )}
+
+      {/* Predictions */}
+      {intelligence && !previewMode && (
+        <PredictionsCard predictions={intelligence.predictions} today={todayStr} />
+      )}
+
       {/* Cycle Chart */}
       <div className="bg-white rounded-3xl border border-warm-100 p-7 shadow-sm">
         <div className="flex items-center justify-between mb-5">
@@ -372,6 +388,11 @@ export default function Dashboard() {
         </div>
         <CycleChart readings={readings} cycleDay={todayCycleDay} />
       </div>
+
+      {/* Pattern detection */}
+      {intelligence && !previewMode && intelligence.patterns.length > 0 && (
+        <PatternsCard patterns={intelligence.patterns} limit={4} />
+      )}
 
       {/* Supplement Checklist */}
       <div className="bg-white rounded-3xl border border-warm-100 p-7 shadow-sm">
@@ -393,6 +414,15 @@ export default function Dashboard() {
         date={selectedDate}
         existingReading={selectedReading}
       />
+
+      {/* Score Drilldown Modal */}
+      {intelligence && (
+        <ScoreDrilldownModal
+          open={scoreDrilldownOpen}
+          onClose={() => setScoreDrilldownOpen(false)}
+          score={intelligence.score}
+        />
+      )}
     </div>
   );
 }

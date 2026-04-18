@@ -1,9 +1,14 @@
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Info, Zap, Brain } from 'lucide-react';
-import { useCycles } from '../lib/hooks';
+import { useCycles, useIntelligence } from '../lib/hooks';
 import { generateCycleInsights, type CycleInsight } from '../lib/cycle-intelligence';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import type { DailyReading } from '../lib/types';
+import WeeklyDigestCard from '../components/intelligence/WeeklyDigestCard';
+import CorrelationsCard from '../components/intelligence/CorrelationsCard';
+import PatternsCard from '../components/intelligence/PatternsCard';
+import PredictionsCard from '../components/intelligence/PredictionsCard';
+import { format } from 'date-fns';
 
 const iconMap = {
   'trending-up': TrendingUp,
@@ -59,6 +64,8 @@ export default function Insights() {
   }, [cycles]) ?? [];
 
   const insights = generateCycleInsights(cycles, allReadingsByCycle, supplementLogs);
+  const intelligence = useIntelligence();
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
 
   return (
     <div className="space-y-7">
@@ -70,22 +77,50 @@ export default function Insights() {
           <h1 className="text-2xl font-semibold text-warm-800">Cycle Intelligence</h1>
         </div>
         <p className="text-sm text-warm-400 mt-1">
-          Patterns, anomalies, and correlations across your cycles.
+          Patterns, anomalies, predictions, and correlations from your own data.
         </p>
       </div>
 
-      <div className="space-y-3">
-        {insights.map((insight, i) => (
-          <InsightCard key={i} insight={insight} />
-        ))}
-      </div>
+      {/* Weekly Digest — narrative summary at the top */}
+      {intelligence && (
+        <WeeklyDigestCard digest={intelligence.digest} />
+      )}
+
+      {/* Patterns */}
+      {intelligence && (
+        <PatternsCard patterns={intelligence.patterns} limit={20} />
+      )}
+
+      {/* Predictions */}
+      {intelligence && (
+        <PredictionsCard predictions={intelligence.predictions} today={todayStr} />
+      )}
+
+      {/* Correlations — the "what's moving the needle for you" card */}
+      {intelligence && (
+        <CorrelationsCard correlations={intelligence.correlations} />
+      )}
+
+      {/* Legacy cycle-intelligence insights (still useful) */}
+      {insights.length > 0 && (
+        <div>
+          <h2 className="text-base font-semibold text-warm-700 mb-3 px-1">Additional cycle insights</h2>
+          <div className="space-y-3">
+            {insights.map((insight, i) => (
+              <InsightCard key={i} insight={insight} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl border border-warm-100 p-6 shadow-sm">
         <h3 className="text-sm font-semibold text-warm-600 mb-3">How iyla learns</h3>
         <div className="space-y-3 text-xs text-warm-400 leading-relaxed">
           <p>
             iyla analyzes patterns across your cycles — LH surge timing, estrogen peaks, thermal shifts,
-            luteal phase length, and supplement compliance. The more cycles you track, the smarter these insights become.
+            luteal phase length, sleep, stress, supplement adherence, and lab optimization. The engine
+            blends your history with real-time signals to produce your <strong>iyla Score</strong>,
+            pattern alerts, personalized correlations, and conception-odds forecasting.
           </p>
           <p>
             These insights are informational, not medical advice. Always discuss significant findings with your RE or OB/GYN.

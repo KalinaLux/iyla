@@ -1,6 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useMemo } from 'react';
+import { format } from 'date-fns';
 import { db } from './db';
 import type { Cycle, DailyReading } from './types';
+import { buildIntelligenceSnapshot, type IntelligenceSnapshot } from './intelligence';
 
 export function useCurrentCycle(): Cycle | undefined {
   return useLiveQuery(() =>
@@ -73,4 +76,36 @@ export function useLabsByTest(testName: string) {
     () => db.labs.where('testName').equals(testName).sortBy('date'),
     [testName]
   ) ?? [];
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Intelligence hook — runs all 5 engines and returns a unified snapshot.
+// Recomputes whenever any underlying table changes.
+// ──────────────────────────────────────────────────────────────────────────
+
+export function useIntelligence(): IntelligenceSnapshot | null {
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  const data = useLiveQuery(async () => {
+    const [cycles, readings, labs, supplements, supplementLogs] = await Promise.all([
+      db.cycles.orderBy('startDate').toArray(),
+      db.readings.toArray(),
+      db.labs.toArray(),
+      db.supplements.toArray(),
+      db.supplementLogs.toArray(),
+    ]);
+    const currentCycle = cycles.find(c => c.outcome === 'ongoing') ?? null;
+    return { cycles, readings, labs, supplements, supplementLogs, currentCycleId: currentCycle?.id ?? null };
+  }, []);
+
+  return useMemo(() => {
+    if (!data) return null;
+    if (data.cycles.length === 0) return null;
+    try {
+      return buildIntelligenceSnapshot({ ...data, today });
+    } catch (err) {
+      console.error('[iyla intelligence] failed to compute snapshot', err);
+      return null;
+    }
+  }, [data, today]);
 }
