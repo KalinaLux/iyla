@@ -53,7 +53,7 @@ export async function pushStatus(data: {
   const pairCode = getPairCode();
   if (!client || !pairCode) return false;
 
-  const themeId = localStorage.getItem('iyla_signal_theme') || 'topgun';
+  const themeId = localStorage.getItem('iyla-signal-theme') || 'playful';
 
   const { error } = await client
     .from('partner_sync')

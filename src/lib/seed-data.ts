@@ -1,6 +1,9 @@
 import { db } from './db';
 import type { Cycle, DailyReading, LabResult, Supplement, SupplementProtocol } from './types';
 import { setSelectedTheme } from './signal-themes';
+import { savePairCode } from './sync';
+
+const DEMO_PAIR_CODE = 'DEMO-PAIR';
 
 // ─── DEMO CYCLES ──────────────────────────────────────────
 // Sample data for demonstration purposes.
@@ -126,12 +129,14 @@ async function seedDemoKalina(): Promise<void> {
 
   localStorage.setItem('iyla-user-role', 'her');
   localStorage.setItem('iyla-onboarded', 'true');
+  savePairCode(DEMO_PAIR_CODE);
 }
 
 async function seedDemoDominick(): Promise<void> {
   localStorage.setItem('iyla-user-role', 'partner');
   localStorage.setItem('iyla-onboarded', 'true');
   setSelectedTheme('topgun');
+  savePairCode(DEMO_PAIR_CODE);
 }
 
 export async function seedKalinaProfile(): Promise<void> {
@@ -167,4 +172,5 @@ export async function clearAllData(): Promise<void> {
   localStorage.removeItem('iyla-user-role');
   localStorage.removeItem('iyla-onboarded');
   localStorage.removeItem('iyla_signal_theme');
+  localStorage.removeItem('iyla_pair_code');
 }

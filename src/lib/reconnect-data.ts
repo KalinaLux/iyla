@@ -36,7 +36,7 @@ export interface ReconnectSession {
   createdAt: string;
 }
 
-const reconnectDb = new Dexie('IylaReconnectDB') as Dexie & {
+export const reconnectDb = new Dexie('IylaReconnectDB') as Dexie & {
   profiles: EntityTable<ReconnectProfile, 'id'>;
   sessions: EntityTable<ReconnectSession, 'id'>;
 };
@@ -45,8 +45,6 @@ reconnectDb.version(1).stores({
   profiles: '++id, role',
   sessions: '++id, date, stage, completed',
 });
-
-export { reconnectDb };
 
 // ─── STAGE DEFINITIONS ───
 
@@ -291,9 +289,15 @@ export const GOAL_OPTIONS = [
 export const AMBIENT_SOUNDS = [
   { value: 'silence', label: 'Silence', emoji: '🤫' },
   { value: 'rain', label: 'Rain', emoji: '🌧️' },
-  { value: 'music', label: 'Soft Music', emoji: '🎵' },
-  { value: 'nature', label: 'Nature', emoji: '🌿' },
   { value: 'ocean', label: 'Ocean', emoji: '🌊' },
+  { value: 'fireplace', label: 'Fireplace', emoji: '🔥' },
+  { value: 'nature', label: 'Forest', emoji: '🌿' },
+  { value: 'music', label: 'Soft Pad', emoji: '🎵' },
+  { value: 'om_tone', label: 'Om Tone', emoji: '🕉️' },
+  { value: 'heartbeat', label: 'Heartbeat', emoji: '💓' },
+  { value: 'pink_noise', label: 'Pink Noise', emoji: '🌸' },
+  { value: 'brown_noise', label: 'Brown Noise', emoji: '🟤' },
+  { value: 'white_noise', label: 'White Noise', emoji: '⚪' },
 ];
 
 export const SESSION_LENGTHS = [15, 20, 30];
@@ -329,4 +333,110 @@ export function getNextUnlockText(stageNumber: number, progress: Record<number, 
   if (stageNumber === 3 && progress[2] < 3) return `${3 - progress[2]} more Stage 2 sessions to unlock`;
   if (stageNumber === 4 && progress[3] < 2) return `${2 - progress[3]} more Stage 3 sessions to unlock`;
   return null;
+}
+
+// ─── AUTOMATIC CONTEXT DETECTION ───
+
+export interface ReconnectContextFlags {
+  hasData: boolean;
+  isTTC3MonthsPlus: boolean;
+  isTTC12MonthsPlus: boolean;
+  hasLoss: boolean;
+  isIVFCycle: boolean;
+  isStressed: boolean;
+  isInFertileWindow: boolean;
+  isInLuteal: boolean;
+  isMenstruating: boolean;
+}
+
+export interface ReconnectContextInput {
+  cycles: { outcome: string; notes?: string }[];
+  currentCycleNotes?: string;
+  fertilityStatus?: string;
+  cycleDay?: number;
+  recentMoods?: (string | undefined | null)[];
+}
+
+const IVF_KEYWORDS = /\b(ivf|retrieval|transfer|stims?|stimulation|beta|embryo|fet|trigger shot|egg retrieval)\b/i;
+
+export function detectReconnectContexts(
+  input: ReconnectContextInput,
+): ReconnectContextFlags {
+  const {
+    cycles,
+    currentCycleNotes,
+    fertilityStatus,
+    cycleDay,
+    recentMoods = [],
+  } = input;
+
+  const hasData = cycles.length > 0;
+  const noPositive = cycles.every((c) => c.outcome !== 'positive');
+  const isTTC3MonthsPlus = cycles.length >= 3 && noPositive;
+  const isTTC12MonthsPlus = cycles.length >= 12 && noPositive;
+  // CycleOutcome: 'ongoing' | 'negative' | 'chemical' | 'positive' | 'miscarriage'
+  // Chemical pregnancies and miscarriages both count as loss for our purposes.
+  const hasLoss = cycles.some(
+    (c) => c.outcome === 'miscarriage' || c.outcome === 'chemical',
+  );
+
+  const hasIvfMarker = (s: string | undefined) => !!s && IVF_KEYWORDS.test(s);
+  const isIVFCycle =
+    hasIvfMarker(currentCycleNotes) || cycles.some((c) => hasIvfMarker(c.notes));
+
+  const stressedDays = recentMoods.filter(
+    (m) => m === 'stressed' || m === 'anxious',
+  ).length;
+  const isStressed = stressedDays >= 3;
+
+  const byStatusFertile =
+    fertilityStatus === 'rising' ||
+    fertilityStatus === 'high' ||
+    fertilityStatus === 'peak';
+  const byDayFertile =
+    typeof cycleDay === 'number' && cycleDay >= 10 && cycleDay <= 17;
+  const isMenstruating =
+    fertilityStatus === 'menstrual' ||
+    (typeof cycleDay === 'number' && cycleDay >= 1 && cycleDay <= 5);
+  const isInLuteal =
+    fertilityStatus === 'luteal' ||
+    fertilityStatus === 'confirmed_ovulation' ||
+    (typeof cycleDay === 'number' && cycleDay > 17);
+  const isInFertileWindow =
+    byStatusFertile ||
+    (byDayFertile && !isInLuteal && !isMenstruating);
+
+  return {
+    hasData,
+    isTTC3MonthsPlus,
+    isTTC12MonthsPlus,
+    hasLoss,
+    isIVFCycle,
+    isStressed,
+    isInFertileWindow,
+    isInLuteal,
+    isMenstruating,
+  };
+}
+
+/**
+ * Given context flags, select up to two context message ids to surface —
+ * one history/situation-based card and one current-phase card. Priority:
+ *   history: loss > ivf > long-TTC (shown as post-loss alternate copy)
+ *   phase:   fertile-window > tww
+ */
+export function selectContextMessageIds(
+  flags: ReconnectContextFlags,
+): string[] {
+  const ids: string[] = [];
+  if (flags.hasLoss) ids.push('post-loss');
+  else if (flags.isIVFCycle) ids.push('ivf');
+  else if (flags.isTTC12MonthsPlus) ids.push('post-loss');
+
+  if (flags.isInFertileWindow && !ids.includes('fertile-window')) {
+    ids.push('fertile-window');
+  } else if (flags.isInLuteal && !ids.includes('tww')) {
+    ids.push('tww');
+  }
+  return ids;
 }

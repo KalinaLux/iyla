@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Sparkles, Thermometer, Droplets, Zap, Heart, TrendingUp, Eye, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { useCurrentCycle, useCycleReadings, useTodayReading, useRecentReadings, useSupplements, useSupplementLogs } from '../lib/hooks';
 import { assessFertility, getStatusLabel, getStatusGradient, getStatusGlow, getPhaseLabel } from '../lib/fertility-engine';
 import CycleChart from '../components/CycleChart';
@@ -10,9 +10,7 @@ import StartCyclePrompt from '../components/StartCyclePrompt';
 import { getUserRole, isOnboarded } from '../components/StartCyclePrompt';
 import WeekStrip from '../components/WeekStrip';
 import type { FertilityStatus, CyclePhase } from '../lib/types';
-import { pushStatus, isSyncEnabled } from '../lib/sync';
-
-const today = format(new Date(), 'yyyy-MM-dd');
+import { pushStatus, isSyncEnabled, getPairCode } from '../lib/sync';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -110,47 +108,60 @@ const PREVIEW_DATA: Record<FertilityStatus, {
 };
 
 export default function Dashboard() {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const [selectedDate, setSelectedDate] = useState(todayStr);
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const cycle = useCurrentCycle();
   const readings = useCycleReadings(cycle?.id);
-  const todayReading = useTodayReading(cycle?.id, today);
-  const recentReadings = useRecentReadings(cycle?.id, today, 7);
+  const selectedReading = useTodayReading(cycle?.id, selectedDate);
+  const todayReading = useTodayReading(cycle?.id, todayStr);
+  const recentReadings = useRecentReadings(cycle?.id, selectedDate, 7);
   const supplements = useSupplements();
-  const supplementLogs = useSupplementLogs(today);
+  const supplementLogs = useSupplementLogs(todayStr);
 
-  // All hooks must be called before any conditional returns
   const lastPushedRef = useRef('');
 
   const startDate = cycle ? new Date(cycle.startDate + 'T00:00:00') : null;
-  const todayDate = new Date(today + 'T00:00:00');
-  const realCycleDay = startDate
+  const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+  const todayDate = new Date(todayStr + 'T00:00:00');
+  const viewingCycleDay = startDate
+    ? Math.floor((selectedDateObj.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    : 0;
+  const todayCycleDay = startDate
     ? Math.floor((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
     : 0;
 
-  const assessment = todayReading && cycle
-    ? assessFertility(todayReading, recentReadings, realCycleDay)
+  const isViewingToday = selectedDate === todayStr;
+
+  const assessment = selectedReading && cycle
+    ? assessFertility(selectedReading, recentReadings, viewingCycleDay)
     : null;
 
-  const realStatus: FertilityStatus = assessment?.status ?? (realCycleDay <= 5 && realCycleDay > 0 ? 'menstrual' : 'low');
+  const todayAssessment = todayReading && cycle
+    ? assessFertility(todayReading, recentReadings, todayCycleDay)
+    : null;
 
-  // Push fertility status to partner via Supabase (if configured)
+  const viewStatus: FertilityStatus = assessment?.status ?? (viewingCycleDay <= 5 && viewingCycleDay > 0 ? 'menstrual' : 'low');
+  const todayStatus: FertilityStatus = todayAssessment?.status ?? (todayCycleDay <= 5 && todayCycleDay > 0 ? 'menstrual' : 'low');
+
+  // Push TODAY's status to partner (always uses today, not selected date)
   useEffect(() => {
     if (!cycle || previewMode || !isSyncEnabled()) return;
-    const key = `${realStatus}:${realCycleDay}`;
+    const key = `${todayStatus}:${todayCycleDay}`;
     if (key === lastPushedRef.current) return;
     lastPushedRef.current = key;
 
-    const phase = assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' : 'follicular');
-    const recommendation = assessment?.recommendation ?? '';
+    const phase = todayAssessment?.phase ?? (todayCycleDay <= 5 ? 'menstrual' : 'follicular');
+    const recommendation = todayAssessment?.recommendation ?? '';
     pushStatus({
-      fertilityStatus: realStatus,
-      cycleDay: realCycleDay,
+      fertilityStatus: todayStatus,
+      cycleDay: todayCycleDay,
       phase,
       recommendation,
     });
-  }, [cycle, realStatus, realCycleDay, previewMode, assessment]);
+  }, [cycle, todayStatus, todayCycleDay, previewMode, todayAssessment]);
 
   if (getUserRole() === 'partner' && isOnboarded()) {
     window.location.href = '/partner';
@@ -164,9 +175,9 @@ export default function Dashboard() {
   const previewStatus = ALL_STATUSES[previewIndex];
   const preview = PREVIEW_DATA[previewStatus];
 
-  const status = previewMode ? previewStatus : realStatus;
-  const cycleDay = previewMode ? preview.cd : realCycleDay;
-  const displayPhase = previewMode ? preview.phase : (assessment?.phase ?? (realCycleDay <= 5 ? 'menstrual' as CyclePhase : 'follicular' as CyclePhase));
+  const status = previewMode ? previewStatus : viewStatus;
+  const cycleDay = previewMode ? preview.cd : viewingCycleDay;
+  const displayPhase = previewMode ? preview.phase : (assessment?.phase ?? (viewingCycleDay <= 5 ? 'menstrual' as CyclePhase : 'follicular' as CyclePhase));
   const displayRecommendation = previewMode ? preview.recommendation : (assessment?.recommendation ?? 'Log your morning readings to receive your personalized insight.');
   const displaySignals = previewMode ? preview.signals : (assessment?.signals ?? []);
 
@@ -179,12 +190,34 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Sync Status Banner */}
+      {isSyncEnabled() && getPairCode() && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 rounded-xl border border-emerald-200">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-medium text-emerald-700">
+            Syncing to partner — code {getPairCode()}
+          </span>
+        </div>
+      )}
+      {isSyncEnabled() && !getPairCode() && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-200">
+          <div className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="text-xs font-medium text-amber-700">
+            Partner sync ready but no pairing code set. Re-load your profile from the welcome screen.
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-warm-800">{getGreeting()}</h1>
+          <h1 className="text-2xl font-semibold text-warm-800">{isViewingToday ? getGreeting() : format(selectedDateObj, 'EEEE, MMMM d')}</h1>
           <p className="text-warm-400 text-sm mt-1">
-            {format(new Date(), 'EEEE, MMMM d')}
+            {isViewingToday ? format(new Date(), 'EEEE, MMMM d') : (
+              <button onClick={() => setSelectedDate(todayStr)} className="text-teal-600 hover:text-teal-700 font-medium transition-colors">
+                ← Back to today
+              </button>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -203,14 +236,14 @@ export default function Dashboard() {
             onClick={() => setEntryModalOpen(true)}
             className="flex items-center gap-2 bg-warm-800 text-white px-5 py-2.5 rounded-2xl text-sm font-medium hover:bg-warm-900 transition-all duration-200 shadow-sm active:scale-[0.97]"
           >
-            <Plus size={16} strokeWidth={2.5} />
-            Log Today
+            {selectedReading ? <Pencil size={14} strokeWidth={2.5} /> : <Plus size={16} strokeWidth={2.5} />}
+            {isViewingToday ? (selectedReading ? 'Edit' : 'Log') : `CD${viewingCycleDay}`}
           </button>
         </div>
       </div>
 
       {/* Week Calendar Strip */}
-      <WeekStrip cycleId={cycle.id} cycleStartDate={cycle.startDate} />
+      <WeekStrip cycleId={cycle.id} cycleStartDate={cycle.startDate} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
       {/* Preview Controls */}
       {previewMode && (
@@ -305,25 +338,25 @@ export default function Dashboard() {
         <QuickStat
           icon={<Thermometer size={15} className="text-rose-500" strokeWidth={1.5} />}
           label="BBT"
-          value={previewMode ? preview.bbt : (todayReading?.bbt ? `${todayReading.bbt}°F` : '—')}
+          value={previewMode ? preview.bbt : (selectedReading?.bbt ? `${selectedReading.bbt}°F` : '—')}
           accent="rose"
         />
         <QuickStat
           icon={<Zap size={15} className="text-amber-500" strokeWidth={1.5} />}
           label="LH"
-          value={previewMode ? preview.lh : (todayReading?.lh ? `${todayReading.lh}` : '—')}
+          value={previewMode ? preview.lh : (selectedReading?.lh ? `${selectedReading.lh}` : '—')}
           accent="amber"
         />
         <QuickStat
           icon={<Droplets size={15} className="text-teal-500" strokeWidth={1.5} />}
           label="Kegg"
-          value={previewMode ? preview.kegg : (todayReading?.keggImpedance ? `${todayReading.keggImpedance}` : '—')}
+          value={previewMode ? preview.kegg : (selectedReading?.keggImpedance ? `${selectedReading.keggImpedance}` : '—')}
           accent="teal"
         />
         <QuickStat
           icon={<Heart size={15} className="text-violet-500" strokeWidth={1.5} />}
           label="PdG"
-          value={previewMode ? preview.pdg : (todayReading?.pdg ? `${todayReading.pdg}` : '—')}
+          value={previewMode ? preview.pdg : (selectedReading?.pdg ? `${selectedReading.pdg}` : '—')}
           accent="violet"
         />
       </div>
@@ -337,7 +370,7 @@ export default function Dashboard() {
             {readings.length} readings
           </div>
         </div>
-        <CycleChart readings={readings} cycleDay={realCycleDay} />
+        <CycleChart readings={readings} cycleDay={todayCycleDay} />
       </div>
 
       {/* Supplement Checklist */}
@@ -346,18 +379,19 @@ export default function Dashboard() {
         <SupplementChecklist
           supplements={supplements}
           logs={supplementLogs}
-          date={today}
+          date={todayStr}
         />
       </div>
 
       {/* Data Entry Modal */}
       <DataEntryModal
+        key={selectedDate}
         open={entryModalOpen}
         onClose={() => setEntryModalOpen(false)}
         cycleId={cycle.id!}
-        cycleDay={realCycleDay}
-        date={today}
-        existingReading={todayReading}
+        cycleDay={viewingCycleDay}
+        date={selectedDate}
+        existingReading={selectedReading}
       />
     </div>
   );

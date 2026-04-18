@@ -19,6 +19,13 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { SIGNAL_THEMES, getSelectedTheme, setSelectedTheme } from '../lib/signal-themes';
+import {
+  savePairCode,
+  getPairCode,
+  pullStatus,
+  isSyncEnabled,
+  type PartnerStatus,
+} from '../lib/sync';
 
 interface SharingOption {
   id: string;
@@ -251,6 +258,9 @@ export default function PartnerPairing() {
     Object.fromEntries(SHARING_OPTIONS.map((o) => [o.id, o.defaultOn]))
   );
   const [selectedThemeId, setSelectedThemeId] = useState(() => getSelectedTheme());
+  const [savedPairCode, setSavedPairCode] = useState<string | null>(() => getPairCode());
+  const [partnerStatus, setPartnerStatus] = useState<PartnerStatus | null>(null);
+  const [connectNotice, setConnectNotice] = useState<{ tone: 'info' | 'warn'; message: string } | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -277,7 +287,11 @@ export default function PartnerPairing() {
   }, []);
 
   const handleGenerate = () => {
-    setGeneratedCode(generateCode());
+    const code = generateCode();
+    setGeneratedCode(code);
+    savePairCode(code);
+    setSavedPairCode(code.toUpperCase());
+    setConnectNotice(null);
     startTimer();
     setCopied(false);
   };
@@ -321,13 +335,51 @@ export default function PartnerPairing() {
     inputRefs.current[focusIdx]?.focus();
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (enteredCode.some((c) => !c)) return;
+    const code = enteredCode.join('').toUpperCase();
+    setConnectNotice(null);
     setConnecting(true);
-    setTimeout(() => {
+
+    savePairCode(code);
+    setSavedPairCode(code);
+
+    if (!isSyncEnabled()) {
       setConnecting(false);
-      setPaired(true);
-    }, 1500);
+      setConnectNotice({
+        tone: 'warn',
+        message:
+          "Cloud sync isn't configured on this deployment — your pair code is saved locally but will only sync when Supabase env vars are set.",
+      });
+      return;
+    }
+
+    try {
+      const status = await pullStatus();
+      setConnecting(false);
+      if (status) {
+        setPartnerStatus(status);
+        setPaired(true);
+      } else {
+        setConnectNotice({
+          tone: 'info',
+          message: 'Pair code saved. Waiting for your partner to start tracking…',
+        });
+      }
+    } catch {
+      setConnecting(false);
+      setConnectNotice({
+        tone: 'warn',
+        message: 'Could not reach sync right now — your pair code is saved and we will retry automatically.',
+      });
+    }
+  };
+
+  const handleClearPairCode = () => {
+    localStorage.removeItem('iyla_pair_code');
+    setSavedPairCode(null);
+    setPartnerStatus(null);
+    setConnectNotice(null);
   };
 
   const handleDisconnect = () => {
@@ -337,6 +389,10 @@ export default function PartnerPairing() {
     setEnteredCode(['', '', '', '', '', '']);
     if (timerRef.current) clearInterval(timerRef.current);
     setSharingToggles(Object.fromEntries(SHARING_OPTIONS.map((o) => [o.id, o.defaultOn])));
+    localStorage.removeItem('iyla_pair_code');
+    setSavedPairCode(null);
+    setPartnerStatus(null);
+    setConnectNotice(null);
   };
 
   const toggleSharing = (id: string) => {
@@ -371,6 +427,24 @@ export default function PartnerPairing() {
           <p className="text-sm text-warm-400 mt-1">Manage your shared connection</p>
         </div>
 
+        {savedPairCode && (
+          <div className="bg-white rounded-2xl border border-warm-100 shadow-sm px-4 py-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+              <Key size={14} strokeWidth={1.5} className="text-violet-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-warm-400 font-semibold">Saved pair code</p>
+              <p className="text-sm font-mono font-semibold text-warm-800">{savedPairCode}</p>
+            </div>
+            <button
+              onClick={handleClearPairCode}
+              className="text-xs font-medium text-warm-400 hover:text-rose-500 transition-colors px-2 py-1"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Connected Status Card */}
         <div className="bg-white rounded-3xl border border-warm-100 shadow-sm p-6">
           <div className="flex items-center gap-4">
@@ -380,7 +454,9 @@ export default function PartnerPairing() {
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-warm-800">Connected with Your Partner</h2>
               <p className="text-sm text-warm-400 mt-0.5">
-                Since {connectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                {partnerStatus?.cycle_day
+                  ? <>Connected to your partner — they're on Cycle Day {partnerStatus.cycle_day}</>
+                  : <>Since {connectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</>}
               </p>
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
@@ -546,6 +622,24 @@ export default function PartnerPairing() {
         <h1 className="text-2xl font-bold text-warm-800 tracking-tight">Partner Pairing</h1>
         <p className="text-sm text-warm-400 mt-1">Share your journey together</p>
       </div>
+
+      {savedPairCode && (
+        <div className="bg-white rounded-2xl border border-warm-100 shadow-sm px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0">
+            <Key size={14} strokeWidth={1.5} className="text-violet-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-warm-400 font-semibold">Saved pair code</p>
+            <p className="text-sm font-mono font-semibold text-warm-800">{savedPairCode}</p>
+          </div>
+          <button
+            onClick={handleClearPairCode}
+            className="text-xs font-medium text-warm-400 hover:text-rose-500 transition-colors px-2 py-1"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Hero */}
       <div className="bg-gradient-to-br from-violet-500 to-indigo-500 rounded-3xl p-8 text-white relative overflow-hidden">
@@ -740,6 +834,17 @@ export default function PartnerPairing() {
             >
               Connect
             </button>
+            {connectNotice && (
+              <div
+                className={`mt-5 text-left rounded-2xl px-4 py-3 text-xs leading-relaxed border ${
+                  connectNotice.tone === 'warn'
+                    ? 'bg-amber-50 border-amber-100 text-amber-700'
+                    : 'bg-indigo-50 border-indigo-100 text-indigo-700'
+                }`}
+              >
+                {connectNotice.message}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, type DragEvent, type ChangeEvent } from 'react';
-import Dexie, { type EntityTable } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
+import { vaultDb, type VaultDocument } from '../lib/vault-db';
 import {
   Upload,
   FileText,
@@ -20,32 +20,6 @@ import {
   HardDrive,
 } from 'lucide-react';
 import Modal from '../components/Modal';
-
-// ---------------------------------------------------------------------------
-// Database
-// ---------------------------------------------------------------------------
-
-interface VaultDocument {
-  id?: number;
-  filename: string;
-  type: string;
-  mimeType: string;
-  size: number;
-  date: string;
-  provider?: string;
-  tags: string[];
-  notes?: string;
-  blob: Blob;
-  createdAt: string;
-}
-
-const vaultDb = new Dexie('IylaVaultDB') as Dexie & {
-  documents: EntityTable<VaultDocument, 'id'>;
-};
-
-vaultDb.version(1).stores({
-  documents: '++id, type, date, provider',
-});
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   User,
   Heart,
@@ -13,9 +14,11 @@ import {
   Check,
   Send,
   Settings,
+  Pill,
 } from 'lucide-react';
 import { getSelectedTheme, getThemeById, setSelectedTheme, mapStatusToTier, SIGNAL_THEMES } from '../lib/signal-themes';
 import { pullStatus, subscribeToStatus, isSyncEnabled, type PartnerStatus } from '../lib/sync';
+import { useSupplements } from '../lib/hooks';
 
 type CycleStatus = 'low' | 'rising' | 'high' | 'peak' | 'confirmed_ovulation' | 'luteal' | 'menstrual';
 type CyclePhase = 'follicular' | 'ovulatory' | 'luteal' | 'menstrual';
@@ -83,11 +86,43 @@ interface TimelineEvent {
   status: CycleStatus;
 }
 
-const MOCK_TIMELINE: TimelineEvent[] = [
+const DEMO_TIMELINE: TimelineEvent[] = [
   { label: 'Ovulation confirmed', daysAgo: 2, status: 'confirmed_ovulation' },
   { label: 'Fertile window opened', daysAgo: 5, status: 'high' },
   { label: 'Cycle started', daysAgo: 16, status: 'menstrual' },
 ];
+
+// Derive a timeline from the partner's live synced cycle status.
+// Most-recent-first. Approximates ovulation around cycle day 14.
+function computeTimeline(cycleDay: number | null, phase: CyclePhase): TimelineEvent[] {
+  if (cycleDay == null || cycleDay < 1) return DEMO_TIMELINE;
+
+  const events: TimelineEvent[] = [];
+
+  if (phase === 'luteal' && cycleDay > 14) {
+    events.push({
+      label: 'Ovulation confirmed',
+      daysAgo: Math.max(cycleDay - 14, 1),
+      status: 'confirmed_ovulation',
+    });
+  }
+
+  if (cycleDay > 10) {
+    events.push({
+      label: 'Fertile window opened',
+      daysAgo: Math.max(cycleDay - 10, 1),
+      status: 'high',
+    });
+  }
+
+  events.push({
+    label: 'Cycle started',
+    daysAgo: Math.max(cycleDay - 1, 0),
+    status: 'menstrual',
+  });
+
+  return events;
+}
 
 interface EducationCard {
   question: string;
@@ -142,11 +177,21 @@ export default function PartnerDashboard() {
   const [, setLiveRecommendation] = useState<string | null>(null);
   const [syncActive, setSyncActive] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [signalSent, setSignalSent] = useState(false);
   const [signalResponse, setSignalResponse] = useState<string | null>(null);
+  const userSupplements = useSupplements();
+  const supplementsToShow: { name: string; dose: string }[] =
+    userSupplements.length > 0 ? userSupplements : SUPPLEMENTS;
+  const usingStarterSupps = userSupplements.length === 0;
   const [supplementChecks, setSupplementChecks] = useState<boolean[]>(
     () => SUPPLEMENTS.map(() => false),
   );
+
+  useEffect(() => {
+    setSupplementChecks((prev) => {
+      if (prev.length === supplementsToShow.length) return prev;
+      return supplementsToShow.map((_, i) => prev[i] ?? false);
+    });
+  }, [supplementsToShow.length]);
   const [hotTubDays, setHotTubDays] = useState(7);
   const [alcoholFreeDays, setAlcoholFreeDays] = useState(4);
   const [exerciseSessions, setExerciseSessions] = useState(3);
@@ -194,6 +239,11 @@ export default function PartnerDashboard() {
   const tier = mapStatusToTier(cycleStatus);
   const signalMsg = theme.messages[tier];
   const themedAction = theme.actionCards[phase];
+
+  // Signal is automatically "sent" when fertility reaches rising, high, or peak
+  const signalSent = syncActive
+    ? ['rising', 'high', 'peak'].includes(cycleStatus)
+    : ['rising', 'high', 'peak'].includes(cycleStatus);
 
   function toggleSupplement(idx: number) {
     setSupplementChecks(prev => prev.map((v, i) => (i === idx ? !v : v)));
@@ -333,15 +383,6 @@ export default function PartnerDashboard() {
             </div>
           </div>
 
-          {!signalSent && (
-            <button
-              onClick={() => setSignalSent(true)}
-              className="text-xs text-warm-600 hover:text-warm-800 font-medium transition-colors"
-            >
-              Simulate signal for demo →
-            </button>
-          )}
-
           {signalSent && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-warm-500">Quick response:</p>
@@ -429,21 +470,42 @@ export default function PartnerDashboard() {
         <div className="px-6 pt-5 pb-4 border-b border-warm-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-warm-800">Your Supplements</h2>
           <span className="text-xs font-medium text-warm-400">
-            {completedSupps}/{SUPPLEMENTS.length} today
+            {completedSupps}/{supplementsToShow.length} today
           </span>
         </div>
         <div className="p-5">
+          {usingStarterSupps && (
+            <div className="mb-4 rounded-2xl bg-violet-50 border border-violet-100 px-4 py-3 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Pill size={14} strokeWidth={1.5} className="text-violet-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-violet-700">Recommended starter supplements</p>
+                <p className="text-[11px] text-violet-500 mt-0.5 leading-relaxed">
+                  Add your own on the Supplements page to personalize this list.
+                </p>
+              </div>
+              <RouterLink
+                to="/supplements"
+                className="text-xs font-semibold text-violet-600 hover:text-violet-800 transition-colors px-2 py-1 flex-shrink-0"
+              >
+                Add →
+              </RouterLink>
+            </div>
+          )}
           {/* Progress bar */}
           <div className="w-full h-1.5 bg-warm-100 rounded-full mb-4 overflow-hidden">
             <div
               className={`h-full bg-gradient-to-r ${theme.gradient} rounded-full transition-all duration-500`}
-              style={{ width: `${(completedSupps / SUPPLEMENTS.length) * 100}%` }}
+              style={{
+                width: `${supplementsToShow.length > 0 ? (completedSupps / supplementsToShow.length) * 100 : 0}%`,
+              }}
             />
           </div>
           <div className="space-y-2">
-            {SUPPLEMENTS.map((supp, idx) => (
+            {supplementsToShow.map((supp, idx) => (
               <label
-                key={supp.name}
+                key={`${supp.name}-${idx}`}
                 className={`flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition-all ${
                   supplementChecks[idx]
                     ? 'bg-warm-100'
@@ -461,7 +523,7 @@ export default function PartnerDashboard() {
                 </div>
                 <input
                   type="checkbox"
-                  checked={supplementChecks[idx]}
+                  checked={!!supplementChecks[idx]}
                   onChange={() => toggleSupplement(idx)}
                   className="sr-only"
                 />
@@ -559,12 +621,14 @@ export default function PartnerDashboard() {
       <div className="bg-white rounded-3xl border border-warm-100 shadow-sm overflow-hidden">
         <div className="px-6 pt-5 pb-4 border-b border-warm-100 flex items-center gap-2">
           <Clock size={16} strokeWidth={1.5} className="text-warm-400" />
-          <h2 className="text-base font-semibold text-warm-800">Recent Timeline</h2>
+          <h2 className="text-base font-semibold text-warm-800">
+            {syncActive ? 'Recent Timeline' : 'Demo timeline'}
+          </h2>
         </div>
         <div className="p-5">
           <div className="relative pl-6">
             <div className="absolute left-[9px] top-2 bottom-2 w-px bg-warm-200" />
-            {MOCK_TIMELINE.map((evt, idx) => (
+            {(syncActive ? computeTimeline(cycleDay, phase) : DEMO_TIMELINE).map((evt, idx) => (
               <div key={idx} className="relative flex items-start gap-4 pb-6 last:pb-0">
                 <div className={`absolute left-[-15px] top-1.5 w-3 h-3 rounded-full border-2 border-white shadow-sm ${
                   idx === 0 ? 'bg-warm-700' : 'bg-warm-300'

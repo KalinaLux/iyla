@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/db';
 import { breathworkDb } from '../lib/breathwork-rewards';
+import { vaultDb } from '../lib/vault-db';
+import { reconnectDb } from '../lib/reconnect-data';
 
 type DeleteTarget =
   | 'cycles'
@@ -43,9 +45,30 @@ export default function Privacy() {
       breathworkDb.rewards.toArray(),
     ]);
 
+    // Reconnect data
+    let reconnectProfiles: unknown[] = [];
+    let reconnectSessions: unknown[] = [];
+    try {
+      reconnectProfiles = await reconnectDb.profiles.toArray();
+      reconnectSessions = await reconnectDb.sessions.toArray();
+    } catch { /* DB may not exist yet */ }
+
+    // Vault documents — convert blobs to base64 so JSON can carry them
+    let vaultDocuments: unknown[] = [];
+    try {
+      const docs = await vaultDb.documents.toArray();
+      vaultDocuments = await Promise.all(
+        docs.map(async (d) => ({
+          ...d,
+          blob: undefined,
+          blobBase64: await blobToBase64(d.blob),
+        })),
+      );
+    } catch { /* DB may not exist yet */ }
+
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: '1.0',
+      version: '2.0',
       data: {
         cycles,
         readings,
@@ -55,6 +78,9 @@ export default function Privacy() {
         supplementLogs,
         breathworkLogs,
         breathworkRewards,
+        reconnectProfiles,
+        reconnectSessions,
+        vaultDocuments,
       },
     };
 
@@ -68,6 +94,15 @@ export default function Privacy() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  async function blobToBase64(b: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(b);
+    });
+  }
 
   const handleExportCSV = async () => {
     const cycles = await db.cycles.toArray();
@@ -124,8 +159,7 @@ export default function Privacy() {
         ]);
         break;
       case 'documents': {
-        const vaultDb = new Dexie('iylaVaultDB');
-        await vaultDb.delete();
+        await Dexie.delete('IylaVaultDB');
         break;
       }
       case 'everything':
@@ -139,12 +173,13 @@ export default function Privacy() {
           breathworkDb.logs.clear(),
           breathworkDb.rewards.clear(),
         ]);
-        try {
-          const vaultDb = new Dexie('iylaVaultDB');
-          await vaultDb.delete();
-        } catch {
-          /* vault may not exist */
-        }
+        try { await Dexie.delete('IylaVaultDB'); } catch { /* ignore */ }
+        try { await Dexie.delete('IylaReconnectDB'); } catch { /* ignore */ }
+        try { await Dexie.delete('IylaIVFDB'); } catch { /* ignore */ }
+        try { await Dexie.delete('IylaLossDB'); } catch { /* ignore */ }
+        // Clear partner pairing + role + theme + onboarding flags
+        ['iyla-user-role', 'iyla-onboarded', 'iyla-signal-theme', 'iyla_pair_code']
+          .forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
         break;
     }
 
@@ -258,7 +293,8 @@ export default function Privacy() {
         </div>
         <p className="text-sm text-warm-400 mb-6 ml-8 leading-relaxed">
           Download a complete copy of everything iyla stores — cycles, readings,
-          labs, supplements, breathwork logs. Yours to keep.
+          labs, supplements, breathwork logs, Reconnect sessions, and vault
+          documents (with files). Yours to keep.
         </p>
         <div className="flex flex-wrap gap-3 ml-8">
           <button

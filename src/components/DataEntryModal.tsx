@@ -4,6 +4,7 @@ import Modal from './Modal';
 import { db } from '../lib/db';
 import type { DailyReading, MucusType, MoodType } from '../lib/types';
 import { SYMPTOM_OPTIONS } from '../lib/types';
+import { assessFertility } from '../lib/fertility-engine';
 
 interface Props {
   open: boolean;
@@ -74,6 +75,18 @@ export default function DataEntryModal({ open, onClose, cycleId, cycleDay, date,
       intercourseTime: intercourseTime || undefined,
       intercourseNotes: intercourseNotes || undefined,
     };
+
+    // Auto-compute fertilityStatus using recent readings from same cycle
+    try {
+      const recentReadings = await db.readings
+        .where('cycleId').equals(cycleId)
+        .and(r => r.date < date)
+        .sortBy('date');
+      const assessment = assessFertility(reading, recentReadings.slice(-7), cycleDay);
+      reading.fertilityStatus = assessment.status;
+    } catch {
+      // If assessment fails, save without it; it can still be computed on read
+    }
 
     if (existingReading?.id) {
       await db.readings.update(existingReading.id, { ...reading } as any);

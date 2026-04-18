@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Heart,
   Clock,
@@ -8,10 +9,13 @@ import {
   Check,
   Lock,
   ChevronLeft,
+  ChevronDown,
   Volume2,
   VolumeX,
   BookOpen,
   Shield,
+  Sliders,
+  Sparkle,
   X,
   Sparkles,
 } from 'lucide-react';
@@ -30,10 +34,21 @@ import {
   getStageProgress,
   isStageUnlocked,
   getNextUnlockText,
+  detectReconnectContexts,
+  selectContextMessageIds,
   type ReconnectProfile,
   type ReconnectSession,
   type StageDefinition,
+  type ReconnectContextFlags,
 } from '../lib/reconnect-data';
+import { useCurrentCycle, useCycles, useCycleReadings } from '../lib/hooks';
+import {
+  startAmbientSound,
+  stopAmbientSound,
+  setAmbientVolume,
+  getAmbientVolume,
+  isAmbientAudioSupported,
+} from '../lib/ambient-audio';
 
 type MainView = 'onboarding' | 'stages' | 'session' | 'history' | 'partner-guide';
 
@@ -429,19 +444,34 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
 function StageMap({
   sessions,
   profile,
+  flags,
+  autoContextIds,
   onStartSession,
   onViewHistory,
   onViewPartnerGuide,
 }: {
   sessions: ReconnectSession[];
   profile: ReconnectProfile;
+  flags: ReconnectContextFlags;
+  autoContextIds: string[];
   onStartSession: (stage: StageDefinition) => void;
   onViewHistory: () => void;
   onViewPartnerGuide: () => void;
 }) {
   const progress = getStageProgress(sessions);
-  const [context, setContext] = useState<string | null>(null);
-  const activeContext = CONTEXT_MESSAGES.find((c) => c.id === context);
+  const [overrideContext, setOverrideContext] = useState<string | null>(null);
+  const [showOverride, setShowOverride] = useState(false);
+
+  // Decide which messages to actually render: the user's manual override wins,
+  // otherwise fall back to the auto-detected set.
+  const displayedContextIds = overrideContext ? [overrideContext] : autoContextIds;
+  const displayedContexts = displayedContextIds
+    .map((id) => CONTEXT_MESSAGES.find((c) => c.id === id))
+    .filter((c): c is (typeof CONTEXT_MESSAGES)[number] => !!c);
+
+  // Extra note for extended TTC when no loss/IVF was detected but cycles >= 12.
+  const showLongTTCNote =
+    flags.isTTC12MonthsPlus && !flags.hasLoss && !flags.isIVFCycle;
 
   return (
     <div className="space-y-7">
@@ -583,48 +613,144 @@ function StageMap({
         </div>
       </div>
 
-      {/* Context Messages Demo Toggles */}
+      {/* Context Messages — auto-detected from cycle data */}
       <div className="bg-white rounded-3xl border border-warm-100 shadow-sm p-5 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-warm-300">
-          Context Modules
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {(['fertile-window', 'tww', 'post-loss', 'ivf'] as const).map((key) => {
-            const msg = CONTEXT_MESSAGES.find((c) => c.id === key)!;
-            return (
-              <button
-                key={key}
-                onClick={() => setContext(context === key ? null : key)}
-                className={`px-3.5 py-2 rounded-2xl text-xs font-medium transition-all ${
-                  context === key
-                    ? 'bg-gradient-to-r from-rose-400 to-pink-400 text-white shadow-sm'
-                    : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
-                }`}
-              >
-                {msg.context}
-              </button>
-            );
-          })}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <Sparkle size={14} className="text-rose-400 mt-0.5 shrink-0" strokeWidth={1.5} />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-warm-400">
+                Guidance for today
+              </p>
+              <p className="text-[11px] text-warm-400 mt-0.5 leading-relaxed">
+                Guidance adapts automatically to your cycle phase and history.
+              </p>
+            </div>
+          </div>
         </div>
 
-        {activeContext && (
-          <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-100 rounded-2xl p-5 space-y-3 animate-in">
-            <h3 className="text-sm font-semibold text-warm-800">
-              {activeContext.title}
-            </h3>
+        {!flags.hasData && (
+          <div className="bg-warm-50 border border-warm-100 rounded-2xl p-4 text-center space-y-2">
+            <Heart size={18} className="text-warm-300 mx-auto" strokeWidth={1.5} />
+            <p className="text-xs text-warm-500 leading-relaxed">
+              Start tracking to get context-aware guidance tailored to your
+              cycle and journey.
+            </p>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-500 hover:text-rose-600 transition-colors"
+            >
+              Log your first cycle
+              <ChevronLeft size={12} className="rotate-180" strokeWidth={2} />
+            </Link>
+          </div>
+        )}
+
+        {flags.hasData && displayedContexts.length === 0 && (
+          <div className="bg-warm-50 border border-warm-100 rounded-2xl p-4 text-center">
+            <p className="text-xs text-warm-500 leading-relaxed">
+              No special context right now — follow the stage journey at your
+              own pace.
+            </p>
+          </div>
+        )}
+
+        {displayedContexts.map((ctx, idx) => (
+          <div
+            key={ctx.id}
+            className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-100 rounded-2xl p-5 space-y-3 animate-in"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-rose-400 font-semibold">
+                  {overrideContext ? 'Custom · ' : 'Detected · '}
+                  {ctx.context}
+                </p>
+                <h3 className="text-sm font-semibold text-warm-800 mt-0.5">
+                  {ctx.title}
+                </h3>
+              </div>
+              {idx === 0 && showLongTTCNote && (
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-rose-100 text-rose-600 shrink-0">
+                  1yr+ TTC
+                </span>
+              )}
+            </div>
             <div className="space-y-2">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-warm-300 font-semibold mb-1">For You</p>
-                <p className="text-xs text-warm-500 leading-relaxed">{activeContext.forHer}</p>
+                <p className="text-xs text-warm-500 leading-relaxed">{ctx.forHer}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-warm-300 font-semibold mb-1">For Your Partner</p>
-                <p className="text-xs text-warm-500 leading-relaxed">{activeContext.forPartner}</p>
+                <p className="text-xs text-warm-500 leading-relaxed">{ctx.forPartner}</p>
               </div>
             </div>
             <p className="text-[10px] text-warm-300">
-              Suggested: Stage {activeContext.suggestedStage}
+              Suggested: Stage {ctx.suggestedStage}
             </p>
+          </div>
+        ))}
+
+        {flags.isStressed && (
+          <div className="flex items-start gap-2 bg-amber-50/70 border border-amber-100 rounded-2xl p-3">
+            <Shield size={13} className="text-amber-500 mt-0.5 shrink-0" strokeWidth={1.5} />
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              Your recent mood logs suggest you've been carrying a lot. A short
+              Stage 1 session — no agenda — can help both of you decompress.
+            </p>
+          </div>
+        )}
+
+        {/* Override / customize */}
+        <button
+          onClick={() => setShowOverride((v) => !v)}
+          className="flex items-center gap-1.5 text-[11px] font-medium text-warm-400 hover:text-warm-600 transition-colors"
+        >
+          <Sliders size={11} strokeWidth={1.5} />
+          {showOverride ? 'Hide override' : 'Customize guidance'}
+          <ChevronDown
+            size={11}
+            strokeWidth={2}
+            className={`transition-transform ${showOverride ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {showOverride && (
+          <div className="space-y-2 pt-1">
+            <p className="text-[11px] text-warm-400 leading-relaxed">
+              Force-show a specific context instead of the auto-detected one.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setOverrideContext(null)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all ${
+                  overrideContext === null
+                    ? 'bg-warm-800 text-white shadow-sm'
+                    : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
+                }`}
+              >
+                Auto
+              </button>
+              {(['fertile-window', 'tww', 'post-loss', 'ivf'] as const).map((key) => {
+                const msg = CONTEXT_MESSAGES.find((c) => c.id === key)!;
+                return (
+                  <button
+                    key={key}
+                    onClick={() =>
+                      setOverrideContext(overrideContext === key ? null : key)
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all ${
+                      overrideContext === key
+                        ? 'bg-gradient-to-r from-rose-400 to-pink-400 text-white shadow-sm'
+                        : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
+                    }`}
+                  >
+                    {msg.context}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -637,11 +763,13 @@ function StageMap({
 function SessionPlayer({
   stage,
   sessionLengthMin,
+  defaultAmbientSound,
   onBack,
   onSessionSaved,
 }: {
   stage: StageDefinition;
   sessionLengthMin: number;
+  defaultAmbientSound?: string;
   onBack: () => void;
   onSessionSaved: () => void;
 }) {
@@ -651,9 +779,12 @@ function SessionPlayer({
   const [remainingMs, setRemainingMs] = useState(sessionLengthMin * 60 * 1000);
   const [showSwitchPrompt, setSwitchPrompt] = useState(false);
   const [hasShownSwitch, setHasShownSwitch] = useState(false);
-  const [ambientSound, setAmbientSound] = useState('silence');
+  const [ambientSound, setAmbientSound] = useState(defaultAmbientSound || 'silence');
   const [showAmbientPicker, setShowAmbientPicker] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [ambientVolume, setAmbientVolumeState] = useState(() => getAmbientVolume());
+  const audioSupported = useMemo(() => isAmbientAudioSupported(), []);
+  const audioElRef = useRef<HTMLAudioElement>(null);
 
   // Session complete state
   const [observation, setObservation] = useState('');
@@ -716,6 +847,31 @@ function SessionPlayer({
     return () => cancelAnimationFrame(animRef.current);
   }, [isRunning, phase, tick]);
 
+  // ─── Ambient audio playback ──────────────────────────────────
+  // The session-start button counts as a user gesture, which satisfies
+  // browser autoplay policies. We start the sound when the timer is running
+  // and the session is active, and stop on pause/end/unmount.
+  useEffect(() => {
+    if (!audioSupported) return;
+    if (phase === 'active' && isRunning && ambientSound !== 'silence') {
+      startAmbientSound(ambientSound);
+    } else {
+      stopAmbientSound();
+    }
+  }, [phase, isRunning, ambientSound, audioSupported]);
+
+  // Stop any playing audio when the component unmounts (back nav, route change).
+  useEffect(() => {
+    return () => {
+      stopAmbientSound();
+    };
+  }, []);
+
+  // Push volume changes to the engine.
+  useEffect(() => {
+    setAmbientVolume(ambientVolume);
+  }, [ambientVolume]);
+
   const elapsedMs = totalMs - remainingMs;
   const progressFraction = Math.min(elapsedMs / totalMs, 1);
   const remainSec = Math.max(0, Math.ceil(remainingMs / 1000));
@@ -748,6 +904,7 @@ function SessionPlayer({
     setShowEndConfirm(false);
     setIsRunning(false);
     setPhase('complete');
+    stopAmbientSound();
   }
 
   // Pre-session rules review
@@ -1058,36 +1215,74 @@ function SessionPlayer({
       )}
 
       {/* Ambient Sound */}
-      <div className="flex items-center justify-center">
-        <button
-          onClick={() => setShowAmbientPicker(!showAmbientPicker)}
-          className="flex items-center gap-2 px-4 py-2 bg-warm-50 rounded-2xl text-xs font-medium text-warm-500 hover:bg-warm-100 transition-colors"
-        >
-          {ambientSound === 'silence' ? (
-            <VolumeX size={14} strokeWidth={1.5} />
-          ) : (
-            <Volume2 size={14} strokeWidth={1.5} />
-          )}
-          {AMBIENT_SOUNDS.find((s) => s.value === ambientSound)?.label}
-        </button>
-      </div>
-      {showAmbientPicker && (
-        <div className="flex flex-wrap gap-2 justify-center">
-          {AMBIENT_SOUNDS.map((s) => (
-            <button
-              key={s.value}
-              onClick={() => { setAmbientSound(s.value); setShowAmbientPicker(false); }}
-              className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
-                ambientSound === s.value
-                  ? 'bg-rose-400 text-white'
-                  : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
-              }`}
-            >
-              {s.emoji} {s.label}
-            </button>
-          ))}
+      <div className="space-y-3">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setShowAmbientPicker(!showAmbientPicker)}
+            className="flex items-center gap-2 px-4 py-2 bg-warm-50 rounded-2xl text-xs font-medium text-warm-500 hover:bg-warm-100 transition-colors"
+          >
+            {ambientSound === 'silence' ? (
+              <VolumeX size={14} strokeWidth={1.5} />
+            ) : (
+              <Volume2 size={14} strokeWidth={1.5} />
+            )}
+            {AMBIENT_SOUNDS.find((s) => s.value === ambientSound)?.label ?? 'Silence'}
+          </button>
         </div>
-      )}
+
+        {showAmbientPicker && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {AMBIENT_SOUNDS.map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => { setAmbientSound(s.value); }}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    ambientSound === s.value
+                      ? 'bg-rose-400 text-white'
+                      : 'bg-warm-50 text-warm-500 hover:bg-warm-100'
+                  }`}
+                >
+                  {s.emoji} {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Volume slider — hidden when silence is selected */}
+            {ambientSound !== 'silence' && (
+              <div className="flex items-center gap-3 bg-warm-50 rounded-2xl px-4 py-3 max-w-xs mx-auto">
+                <VolumeX size={14} className="text-warm-400 shrink-0" strokeWidth={1.5} />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={ambientVolume}
+                  onChange={(e) => setAmbientVolumeState(parseFloat(e.target.value))}
+                  aria-label="Ambient volume"
+                  className="flex-1 accent-rose-400"
+                />
+                <Volume2 size={14} className="text-warm-400 shrink-0" strokeWidth={1.5} />
+              </div>
+            )}
+
+            {!audioSupported && ambientSound !== 'silence' && (
+              <p className="text-[10px] text-warm-400 text-center">
+                Audio playback isn't supported in this browser.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Hidden audio element kept for accessibility / future asset-based
+            playback. Actual audio is synthesized via the Web Audio API. */}
+        <audio
+          ref={audioElRef}
+          aria-hidden="true"
+          preload="none"
+          style={{ display: 'none' }}
+        />
+      </div>
     </div>
   );
 }
@@ -1292,6 +1487,28 @@ export default function Reconnect() {
   );
   const sessions = useLiveQuery(() => reconnectDb.sessions.toArray()) ?? [];
 
+  // ─── Automatic context detection ────────────────────────────
+  const currentCycle = useCurrentCycle();
+  const allCycles = useCycles();
+  const cycleReadings = useCycleReadings(currentCycle?.id);
+
+  const { flags, autoContextIds } = useMemo(() => {
+    const lastReading =
+      cycleReadings.length > 0 ? cycleReadings[cycleReadings.length - 1] : null;
+    const cycleDay = lastReading?.cycleDay;
+    const fertilityStatus = lastReading?.fertilityStatus;
+    const recentMoods = cycleReadings.slice(-14).map((r) => r.mood);
+
+    const f = detectReconnectContexts({
+      cycles: allCycles.map((c) => ({ outcome: c.outcome, notes: c.notes })),
+      currentCycleNotes: currentCycle?.notes,
+      fertilityStatus,
+      cycleDay,
+      recentMoods,
+    });
+    return { flags: f, autoContextIds: selectContextMessageIds(f) };
+  }, [allCycles, currentCycle, cycleReadings]);
+
   const isLoading = profile === undefined;
   const hasProfile = profile != null && profile.onboardingComplete;
 
@@ -1327,6 +1544,7 @@ export default function Reconnect() {
       <SessionPlayer
         stage={activeStage}
         sessionLengthMin={profile.sessionLength}
+        defaultAmbientSound={profile.ambientSound}
         onBack={() => { setView('stages'); setActiveStage(null); }}
         onSessionSaved={() => { setView('stages'); setActiveStage(null); }}
       />
@@ -1337,6 +1555,8 @@ export default function Reconnect() {
     <StageMap
       sessions={sessions}
       profile={profile}
+      flags={flags}
+      autoContextIds={autoContextIds}
       onStartSession={(stage) => { setActiveStage(stage); setView('session'); }}
       onViewHistory={() => setView('history')}
       onViewPartnerGuide={() => setView('partner-guide')}

@@ -1,8 +1,9 @@
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Info, Zap, Brain } from 'lucide-react';
-import { useCycles, useCycleReadings } from '../lib/hooks';
+import { useCycles } from '../lib/hooks';
 import { generateCycleInsights, type CycleInsight } from '../lib/cycle-intelligence';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import type { DailyReading } from '../lib/types';
 
 const iconMap = {
   'trending-up': TrendingUp,
@@ -42,13 +43,22 @@ const severityStyles = {
 
 export default function Insights() {
   const cycles = useCycles();
-  const readings0 = useCycleReadings(cycles[0]?.id);
-  const readings1 = useCycleReadings(cycles[1]?.id);
-  const readings2 = useCycleReadings(cycles[2]?.id);
   const supplementLogs = useLiveQuery(() => db.supplementLogs.toArray()) ?? [];
 
-  const allReadings = [readings0, readings1, readings2].filter(r => r.length > 0);
-  const insights = generateCycleInsights(cycles, allReadings, supplementLogs);
+  // Fetch readings for ALL cycles, grouped by cycle
+  const allReadingsByCycle = useLiveQuery(async () => {
+    if (cycles.length === 0) return [] as DailyReading[][];
+    const groups = await Promise.all(
+      cycles.map(c =>
+        c.id != null
+          ? db.readings.where('cycleId').equals(c.id).sortBy('cycleDay')
+          : Promise.resolve([] as DailyReading[]),
+      ),
+    );
+    return groups.filter(g => g.length > 0);
+  }, [cycles]) ?? [];
+
+  const insights = generateCycleInsights(cycles, allReadingsByCycle, supplementLogs);
 
   return (
     <div className="space-y-7">

@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Feather,
   Shield,
@@ -26,34 +27,21 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import {
+  lossDb,
+  saveLossEvent,
+  upsertDailyLog,
+  addHCGReading,
+  savePeriodInfo,
+  type LossType,
+  type Intervention,
+  type BleedingLevel,
+  type EmotionWord,
+} from '../lib/loss-db';
 
 /* ─── Types ─── */
 
-type LossType =
-  | 'chemical'
-  | 'early_miscarriage'
-  | 'late_miscarriage'
-  | 'ectopic'
-  | 'molar'
-  | 'stillbirth'
-  | 'other';
-
-type Intervention = 'natural' | 'dnc' | 'medication' | 'surgical' | 'other';
-
-type BleedingLevel = 'none' | 'light' | 'moderate' | 'heavy';
-
-type EmotionWord =
-  | 'numb'
-  | 'sad'
-  | 'angry'
-  | 'hopeful'
-  | 'scared'
-  | 'relieved'
-  | 'confused'
-  | 'exhausted'
-  | 'okay';
-
-interface LossEvent {
+interface LossEventForm {
   date: string;
   type: LossType;
   gestationalWeeks: number;
@@ -63,17 +51,12 @@ interface LossEvent {
   notes: string;
 }
 
-interface DailyLog {
+interface DailyLogForm {
   date: string;
   bleeding: BleedingLevel;
   pain: number;
   temperature: string;
   emotions: EmotionWord[];
-}
-
-interface HCGReading {
-  date: string;
-  value: number;
 }
 
 const LOSS_TYPE_LABELS: Record<LossType, string> = {
@@ -167,22 +150,47 @@ function Card({
 export default function LossSupport() {
   const today = format(new Date(), 'yyyy-MM-dd');
 
-  /* Loss event state */
-  const [lossEvent, setLossEvent] = useState<LossEvent | null>(null);
-  const [lossForm, setLossForm] = useState({
+  /* Loss event (persisted) */
+  const lossEvents = useLiveQuery(() => lossDb.events.toArray());
+  const lossEvent = lossEvents?.[0] ?? null;
+
+  const [lossForm, setLossForm] = useState<LossEventForm>({
     date: today,
-    type: 'chemical' as LossType,
+    type: 'chemical',
     gestationalWeeks: 0,
     gestationalDays: 0,
-    intervention: 'natural' as Intervention,
+    intervention: 'natural',
     provider: '',
     notes: '',
   });
-  const [showLossForm, setShowLossForm] = useState(true);
 
-  /* Daily recovery log state */
-  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
-  const [currentLog, setCurrentLog] = useState<DailyLog>({
+  // Show-form override: null = derive from lossEvent existence.
+  const [showLossFormOverride, setShowLossFormOverride] = useState<boolean | null>(null);
+  const showLossForm = showLossFormOverride ?? !lossEvent;
+
+  // Hydrate the form from the persisted event once it loads.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (lossEvents === undefined) return;
+    if (hydratedRef.current) return;
+    if (lossEvent) {
+      setLossForm({
+        date: lossEvent.date,
+        type: lossEvent.type,
+        gestationalWeeks: lossEvent.gestationalWeeks,
+        gestationalDays: lossEvent.gestationalDays,
+        intervention: lossEvent.intervention,
+        provider: lossEvent.provider,
+        notes: lossEvent.notes,
+      });
+    }
+    hydratedRef.current = true;
+  }, [lossEvents, lossEvent]);
+
+  /* Daily recovery logs (persisted) */
+  const dailyLogs = useLiveQuery(() => lossDb.dailyLogs.toArray()) ?? [];
+
+  const [currentLog, setCurrentLog] = useState<DailyLogForm>({
     date: today,
     bleeding: 'none',
     pain: 0,
@@ -190,13 +198,19 @@ export default function LossSupport() {
     emotions: [],
   });
 
-  /* hCG tracking state */
-  const [hcgReadings, setHcgReadings] = useState<HCGReading[]>([]);
+  /* hCG tracking (persisted) */
+  const hcgReadingsRaw =
+    useLiveQuery(() => lossDb.hcgReadings.toArray()) ?? [];
+  const hcgReadings = [...hcgReadingsRaw].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
   const [hcgInput, setHcgInput] = useState({ date: today, value: '' });
 
-  /* First period state */
-  const [periodReturned, setPeriodReturned] = useState(false);
-  const [periodDate, setPeriodDate] = useState('');
+  /* First period (persisted) */
+  const periodRows = useLiveQuery(() => lossDb.periodInfo.toArray());
+  const periodInfo = periodRows?.[0] ?? null;
+  const periodReturned = periodInfo?.returned ?? false;
+  const periodDate = periodInfo?.date ?? '';
 
   /* Derived values */
   const weeksSinceLoss = useMemo(() => {
@@ -217,9 +231,9 @@ export default function LossSupport() {
 
   /* Handlers */
 
-  function saveLossEvent() {
-    setLossEvent({ ...lossForm });
-    setShowLossForm(false);
+  async function handleSaveLossEvent() {
+    await saveLossEvent({ ...lossForm });
+    setShowLossFormOverride(false);
   }
 
   function toggleEmotion(emotion: EmotionWord) {
@@ -231,11 +245,8 @@ export default function LossSupport() {
     }));
   }
 
-  function saveDailyLog() {
-    setDailyLogs((prev) => [
-      ...prev.filter((l) => l.date !== currentLog.date),
-      { ...currentLog },
-    ]);
+  async function handleSaveDailyLog() {
+    await upsertDailyLog({ ...currentLog });
     setCurrentLog({
       date: today,
       bleeding: 'none',
@@ -245,15 +256,22 @@ export default function LossSupport() {
     });
   }
 
-  function addHCGReading() {
+  async function handleAddHCGReading() {
     const val = parseFloat(hcgInput.value);
     if (isNaN(val)) return;
-    setHcgReadings((prev) =>
-      [...prev, { date: hcgInput.date, value: val }].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      )
-    );
+    await addHCGReading({ date: hcgInput.date, value: val });
     setHcgInput({ date: today, value: '' });
+  }
+
+  async function handleTogglePeriodReturned() {
+    await savePeriodInfo({
+      returned: !periodReturned,
+      date: !periodReturned ? periodDate : '',
+    });
+  }
+
+  async function handleSetPeriodDate(date: string) {
+    await savePeriodInfo({ returned: periodReturned, date });
   }
 
   const hcgChartData = hcgReadings.map((r) => ({
@@ -314,7 +332,7 @@ export default function LossSupport() {
                 </span>
               </div>
               <button
-                onClick={() => setShowLossForm(true)}
+                onClick={() => setShowLossFormOverride(true)}
                 className="text-xs text-warm-400 hover:text-warm-600 transition-colors"
               >
                 Edit
@@ -511,7 +529,7 @@ export default function LossSupport() {
             </div>
 
             <button
-              onClick={saveLossEvent}
+              onClick={handleSaveLossEvent}
               className="w-full py-3 rounded-2xl bg-warm-600 text-white text-sm font-medium hover:bg-warm-500 transition-colors"
             >
               Save
@@ -688,7 +706,7 @@ export default function LossSupport() {
                 </span>
               </div>
               <button
-                onClick={addHCGReading}
+                onClick={handleAddHCGReading}
                 className="shrink-0 w-11 h-11 rounded-2xl bg-warm-600 text-white flex items-center justify-center hover:bg-warm-500 transition-colors"
               >
                 <Plus size={16} strokeWidth={2} />
@@ -757,7 +775,7 @@ export default function LossSupport() {
               <div className="space-y-1.5">
                 {hcgReadings.map((r, i) => (
                   <div
-                    key={i}
+                    key={r.id ?? i}
                     className="flex items-center justify-between text-xs text-warm-500 px-1"
                   >
                     <span>
@@ -786,7 +804,7 @@ export default function LossSupport() {
             </div>
 
             <button
-              onClick={() => setPeriodReturned(!periodReturned)}
+              onClick={handleTogglePeriodReturned}
               className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl border text-sm transition-all ${
                 periodReturned
                   ? 'border-warm-400 bg-warm-50 text-warm-700'
@@ -811,7 +829,7 @@ export default function LossSupport() {
               <input
                 type="date"
                 value={periodDate}
-                onChange={(e) => setPeriodDate(e.target.value)}
+                onChange={(e) => handleSetPeriodDate(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-2xl border border-warm-200 text-sm text-warm-800 bg-warm-50/50 focus:outline-none focus:ring-2 focus:ring-warm-300"
               />
             )}
@@ -819,7 +837,7 @@ export default function LossSupport() {
 
           {/* Save daily log */}
           <button
-            onClick={saveDailyLog}
+            onClick={handleSaveDailyLog}
             className="w-full py-3 rounded-2xl bg-warm-600 text-white text-sm font-medium hover:bg-warm-500 transition-colors"
           >
             Save Today's Check-In

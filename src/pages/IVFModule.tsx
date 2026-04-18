@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { format, differenceInDays } from 'date-fns';
 import {
   Syringe,
@@ -44,6 +45,14 @@ import {
   IVF_STATUS_LABELS,
   calculateDoublingTime,
 } from '../lib/ivf-types';
+import {
+  ivfDb,
+  toggleCheckedMed,
+  removeIVFMedication,
+  addIVFMedication,
+  updateIVFCycleStatus,
+  type StoredIVFMedication,
+} from '../lib/ivf-db';
 
 const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -139,11 +148,11 @@ function MedicationSchedule({
   onAddMed,
   onRemoveMed,
 }: {
-  medications: StimMedication[];
+  medications: StoredIVFMedication[];
   checkedMeds: Set<string>;
   onToggleMed: (key: string) => void;
   onAddMed: (med: StimMedication) => void;
-  onRemoveMed: (idx: number) => void;
+  onRemoveMed: (id: number) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState<string>(COMMON_IVF_MEDICATIONS[0]);
@@ -261,8 +270,8 @@ function MedicationSchedule({
             No medications added yet. Tap "Add Med" to get started.
           </p>
         ) : (
-          medications.map((med, idx) => {
-            const key = `${med.name}-${med.time}-${idx}`;
+          medications.map((med) => {
+            const key = `${med.id}`;
             const checked = checkedMeds.has(key);
             return (
               <div
@@ -294,7 +303,7 @@ function MedicationSchedule({
                   </div>
                 </div>
                 <button
-                  onClick={() => onRemoveMed(idx)}
+                  onClick={() => med.id != null && onRemoveMed(med.id)}
                   className="rounded-xl p-1.5 text-warm-300 transition-colors hover:bg-warm-100 hover:text-warm-500"
                 >
                   <Trash2 size={14} />
@@ -530,7 +539,13 @@ function MonitoringLog({
 
 // ─── Egg Retrieval Funnel ───────────────────────────────────────────
 
-function RetrievalFunnel({ outcome }: { outcome: EggRetrievalOutcome | null }) {
+function RetrievalFunnel({
+  outcome,
+  onSave,
+}: {
+  outcome: EggRetrievalOutcome | null;
+  onSave: (o: Omit<EggRetrievalOutcome, 'id' | 'ivfCycleId'>) => void;
+}) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     eggsRetrieved: '',
@@ -541,12 +556,9 @@ function RetrievalFunnel({ outcome }: { outcome: EggRetrievalOutcome | null }) {
     pgtAbnormal: '',
     pgtNoResult: '',
   });
-  const [localOutcome, setLocalOutcome] = useState<EggRetrievalOutcome | null>(outcome);
 
   const handleSave = () => {
-    const o: EggRetrievalOutcome = {
-      id: generateId(),
-      ivfCycleId: 'cycle-1',
+    onSave({
       date: today,
       eggsRetrieved: Number(form.eggsRetrieved) || 0,
       mature: Number(form.mature) || 0,
@@ -555,12 +567,11 @@ function RetrievalFunnel({ outcome }: { outcome: EggRetrievalOutcome | null }) {
       pgtNormal: Number(form.pgtNormal) || 0,
       pgtAbnormal: Number(form.pgtAbnormal) || 0,
       pgtNoResult: Number(form.pgtNoResult) || 0,
-    };
-    setLocalOutcome(o);
+    });
     setShowForm(false);
   };
 
-  const data = localOutcome;
+  const data = outcome;
 
   const steps = data
     ? [
@@ -1181,53 +1192,128 @@ function CycleSetup({ onStart }: { onStart: (cycle: IVFCycle) => void }) {
 // ─── Main Page ──────────────────────────────────────────────────────
 
 export default function IVFModule() {
-  const [cycle, setCycle] = useState<IVFCycle | null>(null);
-  const [medications, setMedications] = useState<StimMedication[]>([]);
-  const [checkedMeds, setCheckedMeds] = useState<Set<string>>(new Set());
-  const [stimDays, setStimDays] = useState<StimDay[]>([]);
-  const [retrievalOutcome] = useState<EggRetrievalOutcome | null>(null);
-  const [betas, setBetas] = useState<BetaHCG[]>([]);
-  const [embryos, setEmbryos] = useState<EmbryoGrade[]>([]);
+  const cycles = useLiveQuery(() => ivfDb.cycles.toArray());
+  const cycle = cycles?.[0] ?? null;
+  const cycleId = cycle?.id;
 
-  if (!cycle) {
-    return <CycleSetup onStart={setCycle} />;
+  const medications = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.medications.where('cycleId').equals(cycleId).toArray()
+        : [],
+    [cycleId],
+  ) ?? [];
+
+  const checkedMedRows = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.checkedMeds.where('cycleId').equals(cycleId).toArray()
+        : [],
+    [cycleId],
+  ) ?? [];
+  const checkedMeds = new Set(checkedMedRows.map((r) => r.medKey));
+
+  const stimDays = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.stimDays
+            .where('ivfCycleId')
+            .equals(cycleId)
+            .sortBy('dayNumber')
+        : [],
+    [cycleId],
+  ) ?? [];
+
+  const retrievals = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.retrievals.where('ivfCycleId').equals(cycleId).toArray()
+        : [],
+    [cycleId],
+  ) ?? [];
+  const retrievalOutcome: EggRetrievalOutcome | null = retrievals[0] ?? null;
+
+  const betas = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.betas.where('ivfCycleId').equals(cycleId).toArray()
+        : [],
+    [cycleId],
+  ) ?? [];
+
+  const embryos = useLiveQuery(
+    () =>
+      cycleId
+        ? ivfDb.embryos.where('ivfCycleId').equals(cycleId).toArray()
+        : [],
+    [cycleId],
+  ) ?? [];
+
+  // Wait for the initial load before deciding whether to show setup.
+  if (cycles === undefined) {
+    return null;
   }
 
-  const handleUpdateStatus = (status: IVFCycleStatus) => {
-    setCycle({ ...cycle, status });
+  if (!cycle) {
+    return (
+      <CycleSetup
+        onStart={async (c) => {
+          await ivfDb.cycles.add(c);
+        }}
+      />
+    );
+  }
+
+  const handleUpdateStatus = async (status: IVFCycleStatus) => {
+    await updateIVFCycleStatus(cycle.id, status);
   };
 
-  const handleAddMed = (med: StimMedication) => {
-    setMedications([...medications, med]);
+  const handleAddMed = async (med: StimMedication) => {
+    await addIVFMedication(cycle.id, med);
   };
 
-  const handleRemoveMed = (idx: number) => {
-    setMedications(medications.filter((_, i) => i !== idx));
+  const handleRemoveMed = async (id: number) => {
+    await removeIVFMedication(id);
   };
 
-  const handleToggleMed = (key: string) => {
-    const next = new Set(checkedMeds);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setCheckedMeds(next);
+  const handleToggleMed = async (key: string) => {
+    await toggleCheckedMed(cycle.id, key);
   };
 
-  const handleAddStimDay = (day: Omit<StimDay, 'id' | 'ivfCycleId'>) => {
-    setStimDays([
-      ...stimDays,
-      { ...day, id: generateId(), ivfCycleId: cycle.id },
-    ]);
+  const handleAddStimDay = async (day: Omit<StimDay, 'id' | 'ivfCycleId'>) => {
+    await ivfDb.stimDays.add({
+      ...day,
+      id: generateId(),
+      ivfCycleId: cycle.id,
+    });
   };
 
-  const handleAddBeta = (beta: Omit<BetaHCG, 'id' | 'ivfCycleId'>) => {
-    setBetas([...betas, { ...beta, id: generateId(), ivfCycleId: cycle.id }]);
+  const handleSaveRetrieval = async (
+    o: Omit<EggRetrievalOutcome, 'id' | 'ivfCycleId'>,
+  ) => {
+    await ivfDb.retrievals.add({
+      ...o,
+      id: generateId(),
+      ivfCycleId: cycle.id,
+    });
   };
 
-  const handleAddEmbryo = (embryo: Omit<EmbryoGrade, 'id' | 'ivfCycleId'>) => {
-    setEmbryos([
-      ...embryos,
-      { ...embryo, id: generateId(), ivfCycleId: cycle.id },
-    ]);
+  const handleAddBeta = async (beta: Omit<BetaHCG, 'id' | 'ivfCycleId'>) => {
+    await ivfDb.betas.add({
+      ...beta,
+      id: generateId(),
+      ivfCycleId: cycle.id,
+    });
+  };
+
+  const handleAddEmbryo = async (
+    embryo: Omit<EmbryoGrade, 'id' | 'ivfCycleId'>,
+  ) => {
+    await ivfDb.embryos.add({
+      ...embryo,
+      id: generateId(),
+      ivfCycleId: cycle.id,
+    });
   };
 
   return (
@@ -1257,7 +1343,7 @@ export default function IVFModule() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <RetrievalFunnel outcome={retrievalOutcome} />
+        <RetrievalFunnel outcome={retrievalOutcome} onSave={handleSaveRetrieval} />
         <BetaTracker betas={betas} onAddBeta={handleAddBeta} />
       </div>
 
