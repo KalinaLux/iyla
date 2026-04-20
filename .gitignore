@@ -26,6 +26,8 @@ dist-ssr
 
 # Private data — never commit
 src/lib/seed-data.local.ts
+update data.md
+*data*.md
 .env
 .env.local
 .env.*.local
